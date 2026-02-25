@@ -18,6 +18,9 @@ It is designed to be used as a **GitHub Copilot skill**: clone the repo, then in
   - Splats: `aws_instance.web[*].id`
   - Bracket access: `resource["name"].attr`
   - `depends_on = [module.foo]`
+- Detects references in **`import`, `moved`, and `removed` blocks** — these are reported with
+  synthetic node names (`import.LINE`, `moved.LINE`, `removed.LINE`) so that operations like
+  removing or moving a module surface every administrative block that must also be updated
 - Resolves child modules via relative paths (`./modules/...`) and the
   `.terraform/modules/modules.json` cache (from `terraform init` / `tofu init`)
 - Tracks `local.<name>` at individual attribute granularity (not the whole locals block)
@@ -61,7 +64,7 @@ flags:
   -direction string
     	traversal direction: backward (who depends on target) or forward (what does target depend on) (default "backward")
   -format string
-    	output format: text or json (default "text")
+    	output format: dot (default, Graphviz), json
   -show-internals
     	include nodes internal to the target module in output
 ```
@@ -87,21 +90,37 @@ tfref . module.foo.aws_s3_bucket.mybucket
 cd /path/to/workspace && tfref module.cloud
 ```
 
-### Example Text Output
+### Example DOT Output
 
+```dot
+// tfref backward: module.cloud
+// workspace: /path/to/tf-google-organization
+// 12 node(s) found
+
+digraph tfref {
+  rankdir=BT;  // bottom-to-top: dependents above, dependencies below
+
+  "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud"];
+  "data.google_iam_policy.production_iam_policy";
+  "google_folder_iam_policy.production";
+  "import.10";
+
+  "data.google_iam_policy.production_iam_policy" -> "module.cloud.output.vpc_terraform_service_account_email_by_id" [label="folder_production.tf:10"];
+  "google_folder_iam_policy.production"    -> "data.google_iam_policy.production_iam_policy" [label="folder_production.tf:39"];
+  "import.10"                              -> "module.cloud.output.google_project" [label="imports.tf:10"];
+}
 ```
-=== tfref backward: module.cloud ===
-workspace: /path/to/tf-google-organization
 
-  depth  node                                      location
-  -----  ----------------------------------------  ------------------------------
-  1      local.cloud                               outputs.tf:17:11
-  2        output.cloud                            outputs.tf:67:11
-  2        module.write-outputs                    outputs.tf:156:51
-  3          module.write-outputs.output.url       modules/write_outputs/main.tf:5:18
+Render it:
+```bash
+# In the browser (paste output):
+# https://dreampuf.github.io/GraphvizOnline/
 
-  4 references found.
+# Locally:
+tfref . module.cloud | dot -Tsvg -o refs.svg && open refs.svg
 ```
+
+**Reading the graph**: arrows point from dependent → dependency (bottom-to-top). The target is highlighted in blue.  `import.N`, `moved.N`, and `removed.N` nodes represent administrative blocks at source line N — these must be updated or removed when restructuring the target.
 
 ### Example JSON Output
 
@@ -232,7 +251,6 @@ type BackwardResult struct {
 | Remote/registry modules | Requires `terraform init` / `tofu init` to populate `.terraform/modules/modules.json` |
 | `for_each` cardinality | All instances of `module.foo[*]` map to the same `module.foo` node — instance-level distinction is not tracked |
 | `.tfvars` files | Not currently parsed |
-| `moved {}` / `import {}` | `to =` address literals are not data-flow edges; not tracked |
 | Dynamic expressions | `for_each = var.X` is tracked but the set of instances is not evaluated |
 
 ---
