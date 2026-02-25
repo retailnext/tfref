@@ -42,15 +42,6 @@ jobs:
       - uses: actions/setup-go@v6.2.0
         with:
           go-version-file: go.mod
-      - name: Install tofu
-        run: |
-          curl -s https://packagecloud.io/install/repositories/opentofu/tofu/script.deb.sh | sudo bash
-          sudo apt-get install -y opentofu
-      - name: Init testdata workspaces
-        run: |
-          for ws in testdata/workspace-tf testdata/workspace-tofu testdata/workspace-mixed testdata/workspace-precision; do
-            (cd "$ws" && tofu init -no-color)
-          done
       - name: Smoke test backward search
         run: go run ./cmd/tfref/... testdata/workspace-tf random_string.main
       - name: Smoke test forward search

@@ -156,11 +156,19 @@ func parseModule(
 				graph.Defined[NodeID{modulePath, "module." + label}] = true
 
 				var source string
+				var sourceSet bool
 				for attrName, attr := range block.Body.Attributes {
 					switch attrName {
 					case "source":
+						sourceSet = true
 						if v, diags := attr.Expr.Value(nil); !diags.HasErrors() && v.Type() == ctyString {
 							source = v.AsString()
+						} else {
+							return fmt.Errorf(
+								"module.%s source attribute cannot be statically evaluated"+
+									" (dynamic sources are not supported): %s",
+								label, attr.Expr.Range(),
+							)
 						}
 						continue
 					case "version", "providers":
@@ -211,6 +219,9 @@ func parseModule(
 							label, source, hint,
 						)
 					}
+				} else if !sourceSet {
+					// No source attribute at all — likely a generated or malformed config.
+					return fmt.Errorf("module.%s has no source attribute", label)
 				}
 				pending = append(pending, call)
 
