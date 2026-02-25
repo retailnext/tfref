@@ -134,6 +134,7 @@ func parseModule(
 				// Each attribute in a locals block is its own independent node.
 				for attrName, attr := range block.Body.Attributes {
 					owner := NodeID{modulePath, "local." + attrName}
+					graph.Defined[owner] = true
 					walkExprRefs(attr.Expr, owner, modulePath, graph)
 				}
 
@@ -148,6 +149,7 @@ func parseModule(
 					childModulePath: childModulePath,
 					inputBindings:   make(map[string][]Ref),
 				}
+				graph.Defined[NodeID{modulePath, "module." + label}] = true
 
 				var source string
 				for attrName, attr := range block.Body.Attributes {
@@ -220,6 +222,9 @@ func parseModule(
 				// becomes NodeID{"module.cloud", "google_project.this"} rather than
 				// the misleading opaque NodeID{"module.cloud", "output.google_project"}.
 				// Other attributes (e.g. id= in import blocks) are plain values.
+				// The resolved addresses are also added to Defined so that a target
+				// that has only a removed/import/moved block (no defining resource block)
+				// is still considered to exist.
 				for attrName, attr := range block.Body.Attributes {
 					switch attrName {
 					case "to", "from":
@@ -228,6 +233,7 @@ func parseModule(
 							if !ok || to.Addr == "" {
 								continue
 							}
+							graph.Defined[to] = true
 							graph.Add(Ref{From: owner, To: to, Subject: trav.SourceRange()})
 						}
 					default:
@@ -241,6 +247,7 @@ func parseModule(
 					continue
 				}
 				owner := NodeID{modulePath, addr}
+				graph.Defined[owner] = true
 				walkBodyRefs(block.Body, owner, modulePath, graph)
 			}
 		}

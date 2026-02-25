@@ -788,9 +788,9 @@ func assertValidDOT(t *testing.T, dot string) {
 }
 
 // captureFormatDOT calls FormatDOT and returns the output as a string.
-func captureFormatDOT(workspace, targetStr, direction string, results []tfref.BackwardResult, collapseInternals bool) string {
+func captureFormatDOT(workspace, targetStr, direction string, results []tfref.BackwardResult) string {
 	var buf bytes.Buffer
-	tfref.FormatDOT(&buf, workspace, targetStr, direction, results, collapseInternals)
+	tfref.FormatDOT(&buf, workspace, targetStr, direction, results)
 	return buf.String()
 }
 
@@ -813,7 +813,7 @@ resource "aws_eip" "ip" {
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "aws_instance.web", "backward", results, true)
+	dot := captureFormatDOT(dir, "aws_instance.web", "backward", results)
 	assertValidDOT(t, dot)
 }
 
@@ -835,13 +835,13 @@ resource "aws_eip" "ip" {
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "aws_eip.ip", "forward", results, true)
+	dot := captureFormatDOT(dir, "aws_eip.ip", "forward", results)
 	assertValidDOT(t, dot)
 }
 
 // TestFormatDOTEmpty checks that an empty result set still produces valid DOT.
 func TestFormatDOTEmpty(t *testing.T) {
-	dot := captureFormatDOT("", "module.nonexistent", "backward", nil, true)
+	dot := captureFormatDOT("", "module.nonexistent", "backward", nil)
 	assertValidDOT(t, dot)
 }
 
@@ -854,7 +854,7 @@ func TestFormatDOTCrossModule(t *testing.T) {
 	}
 	target := tfref.ParseFullAddr("module.child-a")
 	results := tfref.DeepBackwardRefs(graph, target)
-	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results, false)
+	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results)
 	assertValidDOT(t, dot)
 }
 
@@ -885,48 +885,56 @@ resource "aws_s3_bucket" "legacy" {}
 	}
 	target := tfref.NodeID{Addr: "module.cloud"}
 	results := tfref.DeepBackwardRefs(graph, target)
-	dot := captureFormatDOT(dir, "module.cloud", "backward", results, true)
+	dot := captureFormatDOT(dir, "module.cloud", "backward", results)
 	assertValidDOT(t, dot)
 }
 
-// TestFormatDOTCollapseInternals verifies that collapseInternals=true hides
-// module-internal nodes (e.g. module.cloud.output.result) from the graph and
-// collapseInternals=false preserves them as distinct nodes.
-func TestFormatDOTCollapseInternals(t *testing.T) {
+// TestNodeExists verifies the target existence check for various scenarios.
+func TestNodeExists(t *testing.T) {
 	dir := t.TempDir()
 	childDir := filepath.Join(dir, "modules", "cloud")
 	writeFile(t, filepath.Join(dir, "main.tf"), `
 module "cloud" { source = "./modules/cloud" }
-locals {
-  x = module.cloud.result
+resource "aws_s3_bucket" "present" {}
+
+# removed block makes aws_s3_bucket.legacy count as existing even though
+# there is no resource block for it.
+removed {
+  from = aws_s3_bucket.legacy
+  lifecycle { destroy = false }
+}
+
+# import block makes module.cloud.aws_s3_bucket.archived count as existing.
+import {
+  to = module.cloud.aws_s3_bucket.archived
+  id = "archived-bucket"
 }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-output "result" { value = "hello" }
+resource "aws_s3_bucket" "archived" {}
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{Addr: "module.cloud"}
-	results := tfref.DeepBackwardRefs(graph, target)
 
-	// With collapseInternals=true (default, --show-internals=false):
-	// the internal output node should not appear; edge goes to module.cloud.
-	collapsed := captureFormatDOT(dir, "module.cloud", "backward", results, true)
-	assertValidDOT(t, collapsed)
-	if strings.Contains(collapsed, "module.cloud.output.result") {
-		t.Error("collapsed DOT should not contain internal output node module.cloud.output.result")
+	cases := []struct {
+		addr   string
+		exists bool
+	}{
+		{"module.cloud", true},                          // module block present
+		{"aws_s3_bucket.present", true},                 // resource block present
+		{"aws_s3_bucket.legacy", true},                  // only a removed block, still counts
+		{"module.cloud.aws_s3_bucket.archived", true},   // defined in child + import block
+		{"aws_s3_bucket.typo", false},                   // does not exist
+		{"module.nonexistent", false},                   // no module block
+		{"local.doesnotexist", false},                   // no locals attr
 	}
-	if !strings.Contains(collapsed, `"local.x"`) {
-		t.Error("collapsed DOT should still contain the external caller local.x")
-	}
-
-	// With collapseInternals=false (--show-internals):
-	// the internal output node should appear as a distinct node.
-	expanded := captureFormatDOT(dir, "module.cloud", "backward", results, false)
-	assertValidDOT(t, expanded)
-	if !strings.Contains(expanded, "module.cloud.output.result") {
-		t.Error("expanded DOT should contain internal output node module.cloud.output.result")
+	for _, tc := range cases {
+		target := tfref.ParseFullAddr(tc.addr)
+		got := tfref.NodeExists(graph, target)
+		if got != tc.exists {
+			t.Errorf("NodeExists(%q) = %v, want %v", tc.addr, got, tc.exists)
+		}
 	}
 }

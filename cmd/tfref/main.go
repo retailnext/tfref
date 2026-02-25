@@ -41,7 +41,6 @@ func main() {
 
 	format := flag.String("format", "dot", "output format: dot (default, renderable with graphviz), json")
 	direction := flag.String("direction", "backward", "traversal direction: backward (who depends on target) or forward (what does target depend on)")
-	showInternals := flag.Bool("show-internals", false, "include nodes internal to the target module in output")
 
 	// Pre-process args so flags may appear anywhere (before or after positional args).
 	os.Args = reorderArgs(os.Args)
@@ -85,6 +84,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if !tfref.NodeExists(graph, target) {
+		fmt.Fprintf(os.Stderr, "error: %q does not exist in this workspace\n", targetStr)
+		os.Exit(1)
+	}
+
 	var results []tfref.BackwardResult
 	switch *direction {
 	case "forward":
@@ -97,7 +101,7 @@ func main() {
 	case "json":
 		printJSON(absWorkspace, targetStr, *direction, results)
 	default:
-		tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results, !*showInternals)
+		tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results)
 	}
 }
 
@@ -108,9 +112,6 @@ func relPath(base, abs string) string {
 		return abs
 	}
 	return rel
-}
-func printDOT(workspace, targetStr, direction string, results []tfref.BackwardResult, collapseInternals bool) {
-	tfref.FormatDOT(os.Stdout, workspace, targetStr, direction, results, collapseInternals)
 }
 
 // ── JSON output ───────────────────────────────────────────────────────────────

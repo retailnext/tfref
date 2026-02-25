@@ -5,6 +5,35 @@ import (
 	"strings"
 )
 
+// NodeExists reports whether target has an explicit defining block in the
+// workspace.  A node is considered to exist if any of the following are true:
+//
+//   - There is a resource, data, module, variable, output, or locals block that
+//     declares it.
+//   - There is an import, moved, or removed block whose to= or from= attribute
+//     resolves to the node (covering resources that have been removed from code
+//     but still have administrative blocks referencing them).
+//   - For a module call target (e.g. NodeID{"","module.cloud"}): any node
+//     defined inside that module also counts, because the module call block
+//     implicitly defines the child module scope.
+func NodeExists(graph *Graph, target NodeID) bool {
+	if graph.Defined[target] {
+		return true
+	}
+	// For a module call target, also accept any node defined inside the module.
+	childPath, isModule := ModuleChildPath(target)
+	if !isModule {
+		return false
+	}
+	childPathSlash := childPath + "/"
+	for n := range graph.Defined {
+		if n.ModulePath == childPath || strings.HasPrefix(n.ModulePath, childPathSlash) {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseFullAddr parses a full Terraform address string into a NodeID.
 //
 // The full address encodes the module path as leading "module.NAME" segments;

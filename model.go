@@ -73,6 +73,12 @@ type Graph struct {
 
 	// Backward maps a node to all Refs that point at it (inbound edges).
 	Backward map[NodeID][]Ref
+
+	// Defined is the set of nodes that have an explicit defining block in the
+	// workspace source — resource, data, module, variable, output, locals
+	// attributes, and the to/from targets of import/moved/removed blocks.
+	// Use NodeExists to check whether a target address is valid.
+	Defined map[NodeID]bool
 }
 
 // NewGraph allocates an empty Graph.
@@ -80,6 +86,7 @@ func NewGraph() *Graph {
 	return &Graph{
 		Forward:  make(map[NodeID][]Ref),
 		Backward: make(map[NodeID][]Ref),
+		Defined:  make(map[NodeID]bool),
 	}
 }
 
