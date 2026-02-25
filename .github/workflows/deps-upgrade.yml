@@ -1,0 +1,47 @@
+name: Dependency upgrade check
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  upgrade:
+    name: Upgrade and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version: stable   # always latest released Go
+      - name: Upgrade all dependencies
+        id: upgrade
+        run: |
+          go get -u -t ./...
+          go mod tidy
+          if git diff --quiet go.mod go.sum; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "=== go.mod diff ==="
+            git diff go.mod
+          fi
+      - name: Check go version drift
+        id: godrift
+        run: |
+          mod_go=$(grep '^go ' go.mod | awk '{print $2}')
+          runtime_go=$(go env GOVERSION | sed 's/go//')
+          if [ "$mod_go" != "$runtime_go" ]; then
+            echo "go.mod go=$mod_go but runtime=$runtime_go"
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run tests (if deps changed or go version drifted)
+        if: steps.upgrade.outputs.changed == 'true' || steps.godrift.outputs.drifted == 'true'
+        run: go test ./... -count=1 -race
+      - name: Run golangci-lint (latest version)
+        if: steps.upgrade.outputs.changed == 'true' || steps.godrift.outputs.drifted == 'true'
+        uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          version: latest

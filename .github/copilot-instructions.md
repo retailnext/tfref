@@ -2,6 +2,11 @@
 
 This repo implements `tfref`, a Go library and CLI tool for tracing transitive Terraform/OpenTofu references across module boundaries. It is designed as a GitHub Copilot skill.
 
+**Project identity:**
+- Module path: `github.com/retailnext/tfref`
+- Copyright: RetailNext, Inc., MIT license (see `LICENSE`)
+- Go version: see `go.mod` (currently 1.25.0)
+
 ---
 
 ## Architecture Overview
@@ -12,14 +17,15 @@ tfref/
 ├── parse.go        — ParseWorkspace, parseModule, HCL traversal extraction, module stitching
 ├── resolve.go      — traversalToNodeID, blockToAddr, stepName, module for_each handling
 ├── query.go        — DeepBackwardRefs, DeepForwardRefs, ParseFullAddr, print helpers
-├── tfref_test.go   — unit + integration tests (22 tests, all patterns)
+├── format.go       — FormatDOT: Graphviz DOT output formatter
+├── tfref_test.go   — unit + integration tests (all patterns)
 ├── testdata/       — fixture workspaces for testing
 │   ├── workspace-tf/       — pure .tf workspace
 │   ├── workspace-tofu/     — pure .tofu workspace
 │   ├── workspace-mixed/    — mixed .tf and .tofu files
 │   └── workspace-precision/ — baz/zee module boundary precision scenario
 └── cmd/tfref/
-    └── main.go     — CLI: flag parsing, text/JSON output, full address parsing
+    └── main.go     — CLI: flag parsing, DOT output, full address parsing
 ```
 
 ---
@@ -65,6 +71,46 @@ The recursion guard uses `modulePath` (the unique call chain) as the key, NOT th
 
 ---
 
+## Test Data Rules
+
+- Use `terraform_data` for inline tests (no `tofu init` needed — no provider required)
+- Use `random_string`/`random_id` for `testdata/` workspaces (requires `tofu init` which the smoke test CI job handles)
+- All TF code in `testdata/` must pass `tofu validate` after `tofu init`
+- Do NOT use `aws_*` or other cloud-provider-specific resources in tests — they require real credentials
+
+---
+
+## Lint Rules
+
+- Linter: `golangci-lint` v2.10.1 (config in `.golangci.yml`)
+- Import ordering (gci): stdlib → external → `prefix(github.com/retailnext/tfref)` (internal)
+- Formatting: `gofumpt` (stricter than `gofmt`)
+- Run: `golangci-lint run ./...` and `golangci-lint fmt ./...`
+
+---
+
+## License
+
+- MIT license, copyright RetailNext, Inc.
+- If the `LICENSE` file copyright year is in a previous year, update the year range (e.g., `2026-2027`).
+- All non-test Go source files must have the standard copyright header:
+
+```go
+// Copyright (c) 2026 RetailNext, Inc. All rights reserved.
+// Use of this source code is governed by an MIT-style license that can be
+// found in the LICENSE file.
+```
+
+---
+
+## Documentation
+
+- `SKILL.md` — Copilot skill descriptor at repo root; describes invocation, flags, address format, examples
+- `README.md` — Full documentation for humans and `go install` users
+- Both must be updated when behavior changes (new flags, new address formats, changed output, etc.)
+
+---
+
 ## How to Extend
 
 ### Adding a new HCL block type
@@ -81,6 +127,17 @@ In `parse.go` `parseModule`, the `switch block.Type` handles `"module"`, `"varia
 ### Extending the CLI
 
 The CLI is in `cmd/tfref/main.go`. Add new flags with `flag.Bool` / `flag.String` and register any new value-taking flags in the `valueTakers` map in `reorderArgs` so they work when placed after positional args.
+
+---
+
+## CI
+
+- GitHub Actions in `.github/workflows/`:
+  - `ci.yml` — lint (golangci-lint), test (with race detector + coverage), smoke tests (requires `tofu init`)
+  - `deps-upgrade.yml` — daily dependency upgrade check
+  - `codeql.yml` — weekly CodeQL security analysis (Go + Actions)
+- Dependabot: monthly updates for Go modules and GitHub Actions (`.github/dependabot.yml`)
+- Action versions pinned: `actions/checkout@v6.0.2`, `actions/setup-go@v6.2.0`, `github/codeql-action@v4.32.4`, `golangci/golangci-lint-action@v9.2.0`
 
 ---
 
@@ -106,3 +163,4 @@ To add a new test:
 - Registry modules without a `.terraform/` cache → error with `terraform init` hint
 - Two module calls to same source dir → both parsed independently (keyed by modulePath)
 - Mixed `.tf` + `.tofu` extensions in same dir → both globbed and parsed together
+

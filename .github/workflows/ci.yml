@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          version: v2.10.1
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Run tests
+        run: go test ./... -count=1 -race -coverprofile=coverage.out
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
+
+  smoke:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Install tofu
+        run: |
+          curl -s https://packagecloud.io/install/repositories/opentofu/tofu/script.deb.sh | sudo bash
+          sudo apt-get install -y opentofu
+      - name: Init testdata workspaces
+        run: |
+          for ws in testdata/workspace-tf testdata/workspace-tofu testdata/workspace-mixed testdata/workspace-precision; do
+            (cd "$ws" && tofu init -no-color)
+          done
+      - name: Smoke test backward search
+        run: go run ./cmd/tfref/... testdata/workspace-tf random_string.main
+      - name: Smoke test forward search
+        run: go run ./cmd/tfref/... testdata/workspace-tf random_string.main --direction forward
+      - name: Smoke test cross-module
+        run: go run ./cmd/tfref/... testdata/workspace-precision module.foo
+      - name: Smoke test nonexistent target exits 1
+        run: |
+          if go run ./cmd/tfref/... testdata/workspace-tf nonexistent.resource 2>/dev/null; then
+            echo "ERROR: expected non-zero exit for nonexistent target"
+            exit 1
+          fi
