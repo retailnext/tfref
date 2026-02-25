@@ -47,14 +47,14 @@ jobs:
           pinned=$(grep 'GOLANGCI_LINT_VERSION:' .github/workflows/ci.yml | awk '{print $2}')
           latest=$(curl -fsSL https://api.github.com/repos/golangci/golangci-lint/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
           echo "pinned=$pinned latest=$latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
           if [ "$pinned" != "$latest" ]; then
             echo "drifted=true" >> "$GITHUB_OUTPUT"
-            echo "latest=$latest" >> "$GITHUB_OUTPUT"
           else
             echo "drifted=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Run golangci-lint (latest version, if newer than pinned)
-        if: steps.lintdrift.outputs.drifted == 'true'
+      - name: Run golangci-lint (new version or on dep/go changes)
+        if: steps.lintdrift.outputs.drifted == 'true' || steps.upgrade.outputs.changed == 'true' || steps.godrift.outputs.drifted == 'true'
         uses: golangci/golangci-lint-action@v9.2.0
         with:
-          version: latest
+          version: ${{ steps.lintdrift.outputs.latest }}
