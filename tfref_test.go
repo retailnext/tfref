@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/awalterschulze/gographviz"
+
 	"github.com/retailnext/tfref"
 )
 
@@ -16,10 +17,10 @@ import (
 // intermediate directories as needed.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -272,7 +273,7 @@ resource "terraform_data" "public" {
 // TestCrossModuleRef verifies output stitching across a module boundary:
 // root: local.bar = module.child.result
 // child: output.result = aws_instance.web.id
-// → backward refs from aws_instance.web must include root::local.bar
+// → backward refs from aws_instance.web must include root::local.bar.
 func TestCrossModuleRef(t *testing.T) {
 	dir := t.TempDir()
 	childDir := filepath.Join(dir, "modules", "child")
@@ -543,11 +544,11 @@ func TestMixedWorkspace(t *testing.T) {
 
 // TestModuleBoundaryPrecision is the baz/zee scenario:
 //
-//foo produces output.result
-//bar.derived_output depends on foo (via var.foo_result)
-//bar.independent_output does NOT depend on foo
-//baz consumes bar.independent_output → must NOT appear in graph from foo
-//zee consumes bar.derived_output     → MUST appear in graph from foo
+// foo produces output.result
+// bar.derived_output depends on foo (via var.foo_result)
+// bar.independent_output does NOT depend on foo
+// baz consumes bar.independent_output → must NOT appear in graph from foo
+// zee consumes bar.derived_output     → MUST appear in graph from foo.
 func TestModuleBoundaryPrecision(t *testing.T) {
 	graph, err := tfref.ParseWorkspace("testdata/workspace-precision")
 	if err != nil {
@@ -928,13 +929,13 @@ resource "terraform_data" "archived" {}
 		addr   string
 		exists bool
 	}{
-		{"module.cloud", true},                            // module block present
-		{"terraform_data.present", true},                  // resource block present
-		{"terraform_data.legacy", true},                   // only a removed block, still counts
-		{"module.cloud.terraform_data.archived", true},    // defined in child + import block
-		{"terraform_data.typo", false},                    // does not exist
-		{"module.nonexistent", false},                     // no module block
-		{"local.doesnotexist", false},                     // no locals attr
+		{"module.cloud", true},                         // module block present
+		{"terraform_data.present", true},               // resource block present
+		{"terraform_data.legacy", true},                // only a removed block, still counts
+		{"module.cloud.terraform_data.archived", true}, // defined in child + import block
+		{"terraform_data.typo", false},                 // does not exist
+		{"module.nonexistent", false},                  // no module block
+		{"local.doesnotexist", false},                  // no locals attr
 	}
 	for _, tc := range cases {
 		target := tfref.ParseFullAddr(tc.addr)

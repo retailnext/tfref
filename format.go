@@ -24,7 +24,7 @@ import (
 //
 // or paste into https://dreampuf.github.io/GraphvizOnline/
 func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []BackwardResult) {
-	p := func(format string, args ...any) { fmt.Fprintf(w, format, args...) }
+	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 
 	p("// tfref %s: %s\n", direction, targetStr)
 	p("// workspace: %s\n", workspace)
@@ -123,4 +123,3 @@ func dotRelPath(base, abs string) string {
 	}
 	return rel
 }
-

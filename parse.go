@@ -82,10 +82,10 @@ func loadModulesManifest(rootDir string) (*modulesManifest, error) {
 // pendingCall holds everything we need to stitch a module call boundary after
 // both the parent and child have been parsed.
 type pendingCall struct {
-	label           string            // e.g. "foo" from module "foo" { ... }
-	childModulePath string            // e.g. "module.foo"
-	childDir        string            // absolute filesystem path to child module
-	inputBindings   map[string][]Ref  // varName → caller-side Refs
+	label           string           // e.g. "foo" from module "foo" { ... }
+	childModulePath string           // e.g. "module.foo"
+	childDir        string           // absolute filesystem path to child module
+	inputBindings   map[string][]Ref // varName → caller-side Refs
 }
 
 // parseModule parses a single module directory and recurses into any child
