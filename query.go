@@ -32,11 +32,11 @@ func ParseFullAddr(s string) NodeID {
 	}
 }
 
-// moduleChildPath returns the module path of the child module for a module
+// ModuleChildPath returns the module path of the child module for a module
 // call node, e.g. NodeID{"", "module.cloud"} → "module.cloud",
 // NodeID{"module.foo", "module.bar"} → "module.foo/module.bar".
 // Returns ("", false) if the node is not a module call.
-func moduleChildPath(n NodeID) (string, bool) {
+func ModuleChildPath(n NodeID) (string, bool) {
 	if !strings.HasPrefix(n.Addr, "module.") {
 		return "", false
 	}
@@ -54,7 +54,7 @@ func moduleChildPath(n NodeID) (string, bool) {
 // directly to resources inside the module rather than to outputs.
 func seedNodes(graph *Graph, target NodeID) []NodeID {
 	seeds := []NodeID{target}
-	childPath, ok := moduleChildPath(target)
+	childPath, ok := ModuleChildPath(target)
 	if !ok {
 		return seeds
 	}

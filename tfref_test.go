@@ -788,9 +788,9 @@ func assertValidDOT(t *testing.T, dot string) {
 }
 
 // captureFormatDOT calls FormatDOT and returns the output as a string.
-func captureFormatDOT(workspace, targetStr, direction string, results []tfref.BackwardResult) string {
+func captureFormatDOT(workspace, targetStr, direction string, results []tfref.BackwardResult, collapseInternals bool) string {
 	var buf bytes.Buffer
-	tfref.FormatDOT(&buf, workspace, targetStr, direction, results)
+	tfref.FormatDOT(&buf, workspace, targetStr, direction, results, collapseInternals)
 	return buf.String()
 }
 
@@ -813,7 +813,7 @@ resource "aws_eip" "ip" {
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "aws_instance.web", "backward", results)
+	dot := captureFormatDOT(dir, "aws_instance.web", "backward", results, true)
 	assertValidDOT(t, dot)
 }
 
@@ -835,13 +835,13 @@ resource "aws_eip" "ip" {
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "aws_eip.ip", "forward", results)
+	dot := captureFormatDOT(dir, "aws_eip.ip", "forward", results, true)
 	assertValidDOT(t, dot)
 }
 
 // TestFormatDOTEmpty checks that an empty result set still produces valid DOT.
 func TestFormatDOTEmpty(t *testing.T) {
-	dot := captureFormatDOT("", "module.nonexistent", "backward", nil)
+	dot := captureFormatDOT("", "module.nonexistent", "backward", nil, true)
 	assertValidDOT(t, dot)
 }
 
@@ -854,7 +854,7 @@ func TestFormatDOTCrossModule(t *testing.T) {
 	}
 	target := tfref.ParseFullAddr("module.child-a")
 	results := tfref.DeepBackwardRefs(graph, target)
-	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results)
+	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results, false)
 	assertValidDOT(t, dot)
 }
 
@@ -885,6 +885,48 @@ resource "aws_s3_bucket" "legacy" {}
 	}
 	target := tfref.NodeID{Addr: "module.cloud"}
 	results := tfref.DeepBackwardRefs(graph, target)
-	dot := captureFormatDOT(dir, "module.cloud", "backward", results)
+	dot := captureFormatDOT(dir, "module.cloud", "backward", results, true)
 	assertValidDOT(t, dot)
+}
+
+// TestFormatDOTCollapseInternals verifies that collapseInternals=true hides
+// module-internal nodes (e.g. module.cloud.output.result) from the graph and
+// collapseInternals=false preserves them as distinct nodes.
+func TestFormatDOTCollapseInternals(t *testing.T) {
+	dir := t.TempDir()
+	childDir := filepath.Join(dir, "modules", "cloud")
+	writeFile(t, filepath.Join(dir, "main.tf"), `
+module "cloud" { source = "./modules/cloud" }
+locals {
+  x = module.cloud.result
+}
+`)
+	writeFile(t, filepath.Join(childDir, "main.tf"), `
+output "result" { value = "hello" }
+`)
+	graph, err := tfref.ParseWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := tfref.NodeID{Addr: "module.cloud"}
+	results := tfref.DeepBackwardRefs(graph, target)
+
+	// With collapseInternals=true (default, --show-internals=false):
+	// the internal output node should not appear; edge goes to module.cloud.
+	collapsed := captureFormatDOT(dir, "module.cloud", "backward", results, true)
+	assertValidDOT(t, collapsed)
+	if strings.Contains(collapsed, "module.cloud.output.result") {
+		t.Error("collapsed DOT should not contain internal output node module.cloud.output.result")
+	}
+	if !strings.Contains(collapsed, `"local.x"`) {
+		t.Error("collapsed DOT should still contain the external caller local.x")
+	}
+
+	// With collapseInternals=false (--show-internals):
+	// the internal output node should appear as a distinct node.
+	expanded := captureFormatDOT(dir, "module.cloud", "backward", results, false)
+	assertValidDOT(t, expanded)
+	if !strings.Contains(expanded, "module.cloud.output.result") {
+		t.Error("expanded DOT should contain internal output node module.cloud.output.result")
+	}
 }

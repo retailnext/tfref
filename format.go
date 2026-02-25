@@ -14,13 +14,37 @@ import (
 // direction is "backward" or "forward".  workspace is used to make file paths
 // in edge labels relative; pass an empty string to keep absolute paths.
 //
+// When collapseInternals is true (the default --show-internals=false mode),
+// edges whose target is a node inside the target module are collapsed so they
+// point directly to the target module node itself.  This produces a clean
+// "who depends on module.cloud" graph without internal implementation detail.
+// When collapseInternals is false the full edge targets (e.g.
+// module.cloud.output.vpc_sa_email) are rendered as separate nodes.
+//
 // Render the output with:
 //
 //	dot -Tsvg out.dot > out.svg
 //
 // or paste into https://dreampuf.github.io/GraphvizOnline/
-func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []BackwardResult) {
+func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []BackwardResult, collapseInternals bool) {
 	p := func(format string, args ...any) { fmt.Fprintf(w, format, args...) }
+
+	// Determine the child-module prefix so we can collapse internal edge targets.
+	target := ParseFullAddr(targetStr)
+	childPath, isModule := ModuleChildPath(target)
+	childPathSlash := childPath + "/"
+
+	// effectiveTo returns the DOT node address for an edge target.  If
+	// collapseInternals is true and the target lives inside the module, it is
+	// replaced with the module call node itself.
+	effectiveTo := func(to NodeID) string {
+		if collapseInternals && isModule {
+			if to.ModulePath == childPath || strings.HasPrefix(to.ModulePath, childPathSlash) {
+				return targetStr
+			}
+		}
+		return FullAddr(to)
+	}
 
 	p("// tfref %s: %s\n", direction, targetStr)
 	p("// workspace: %s\n", workspace)
@@ -45,14 +69,26 @@ func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []Ba
 	}
 	var edges []edge
 	seenNodes := map[string]bool{targetStr: true}
+	seenEdges := map[string]bool{} // deduplicate after collapse
 
 	for _, r := range results {
 		fa := FullAddr(r.Ref.From)
+		ta := effectiveTo(r.Ref.To)
+		// After collapsing, multiple results may produce the same from→to pair.
+		edgeKey := fa + "\x00" + ta
+		if seenEdges[edgeKey] {
+			continue
+		}
+		seenEdges[edgeKey] = true
 		seenNodes[fa] = true
+		// Internal collapsed targets (== targetStr) are already in seenNodes.
+		if ta != targetStr {
+			seenNodes[ta] = true
+		}
 		rng := r.Ref.Subject
 		edges = append(edges, edge{
 			from: fa,
-			to:   FullAddr(r.Ref.To),
+			to:   ta,
 			file: dotRelPath(workspace, rng.Filename),
 			line: rng.Start.Line,
 		})

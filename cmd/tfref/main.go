@@ -93,25 +93,11 @@ func main() {
 		results = tfref.DeepBackwardRefs(graph, target)
 	}
 
-	// Filter internal nodes unless --show-internals is set.
-	if !*showInternals && target.ModulePath != "" {
-		prefix := target.ModulePath
-		filtered := results[:0]
-		for _, r := range results {
-			mp := r.Ref.From.ModulePath
-			if mp == prefix || strings.HasPrefix(mp, prefix+"/") {
-				continue
-			}
-			filtered = append(filtered, r)
-		}
-		results = filtered
-	}
-
 	switch *format {
 	case "json":
 		printJSON(absWorkspace, targetStr, *direction, results)
 	default:
-		tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results)
+		tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results, !*showInternals)
 	}
 }
 
@@ -123,8 +109,8 @@ func relPath(base, abs string) string {
 	}
 	return rel
 }
-func printDOT(workspace, targetStr, direction string, results []tfref.BackwardResult) {
-	tfref.FormatDOT(os.Stdout, workspace, targetStr, direction, results)
+func printDOT(workspace, targetStr, direction string, results []tfref.BackwardResult, collapseInternals bool) {
+	tfref.FormatDOT(os.Stdout, workspace, targetStr, direction, results, collapseInternals)
 }
 
 // ── JSON output ───────────────────────────────────────────────────────────────
