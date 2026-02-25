@@ -25,7 +25,7 @@ The binary is under `cmd/tfref`. When running from the cloned skill directory:
 cd ~/.copilot/skills/tfref && go run ./cmd/tfref/... <workspace-dir> <target-addr> [flags]
 ```
 
-Or if installed via `go install github.com/eriksw/tfref/cmd/tfref@latest`:
+Or if installed via `go install github.com/retailnext/tfref/cmd/tfref@latest`:
 
 ```bash
 tfref <workspace-dir> <target-addr> [flags]

@@ -39,7 +39,7 @@ It is designed to be used as a **GitHub Copilot skill**: clone the repo, then in
 ## Installation as a Copilot Skill
 
 ```bash
-git clone https://github.com/eriksw/tfref ~/.copilot/skills/tfref
+git clone https://github.com/retailnext/tfref ~/.copilot/skills/tfref
 ```
 
 No binary needed — the skill is invoked from source using the Go toolchain.
@@ -47,7 +47,7 @@ No binary needed — the skill is invoked from source using the Go toolchain.
 ## Standalone installation
 
 ```bash
-go install github.com/eriksw/tfref/cmd/tfref@latest
+go install github.com/retailnext/tfref/cmd/tfref@latest
 ```
 
 ---
@@ -161,7 +161,7 @@ module.networking/module.vpc::var.cidr
 ## Go API
 
 ```go
-import "github.com/eriksw/tfref"
+import "github.com/retailnext/tfref"
 
 graph, err := tfref.ParseWorkspace("./my-workspace")
 if err != nil {
@@ -229,7 +229,7 @@ type BackwardResult struct {
 ## Development
 
 ```bash
-git clone https://github.com/eriksw/tfref
+git clone https://github.com/retailnext/tfref
 cd tfref
 go test ./...
 ```

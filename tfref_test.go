@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/awalterschulze/gographviz"
-	"github.com/eriksw/tfref"
+	"github.com/retailnext/tfref"
 )
 
 // writeFile is a test helper that writes content to path, creating

@@ -1,4 +1,4 @@
-module github.com/eriksw/tfref
+module github.com/retailnext/tfref
 
 go 1.25.0
 

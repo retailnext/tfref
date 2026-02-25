@@ -1,3 +1,7 @@
+// Copyright (c) 2026 RetailNext, Inc. All rights reserved.
+// Use of this source code is governed by an MIT-style license that can be
+// found in the LICENSE file.
+
 // Command tfref traces backward (and forward) references across a
 // Terraform / OpenTofu workspace.
 //
@@ -19,7 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/eriksw/tfref"
+	"github.com/retailnext/tfref"
 )
 
 func main() {

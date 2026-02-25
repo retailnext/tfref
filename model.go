@@ -1,3 +1,7 @@
+// Copyright (c) 2026 RetailNext, Inc. All rights reserved.
+// Use of this source code is governed by an MIT-style license that can be
+// found in the LICENSE file.
+
 // Package tfref parses Terraform / OpenTofu workspaces and builds a
 // position-annotated reference graph that can be queried for forward and
 // backward (transitive) dependencies across module boundaries.
