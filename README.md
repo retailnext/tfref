@@ -63,10 +63,6 @@ tfref [flags] [WORKSPACE] TARGET
 flags:
   -direction string
     	traversal direction: backward (who depends on target) or forward (what does target depend on) (default "backward")
-  -format string
-    	output format: dot (default, Graphviz), json
-  -show-internals
-    	include nodes internal to the target module in output
 ```
 
 Flags may be placed before or after positional arguments.
@@ -76,9 +72,6 @@ Flags may be placed before or after positional arguments.
 ```bash
 # Find everything that (directly or transitively) references module.cloud
 tfref . module.cloud
-
-# Same, with JSON output for machine consumption
-tfref . module.cloud --format json
 
 # What does module.cloud itself depend on?
 tfref . module.cloud --direction forward
@@ -103,11 +96,11 @@ digraph tfref {
   "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud"];
   "data.google_iam_policy.production_iam_policy";
   "google_folder_iam_policy.production";
-  "import.10";
+  "import[imports.tf:10]";
 
   "data.google_iam_policy.production_iam_policy" -> "module.cloud.output.vpc_terraform_service_account_email_by_id" [label="folder_production.tf:10"];
   "google_folder_iam_policy.production"    -> "data.google_iam_policy.production_iam_policy" [label="folder_production.tf:39"];
-  "import.10"                              -> "module.cloud.output.google_project" [label="imports.tf:10"];
+  "import[imports.tf:10]"                  -> "module.cloud.module.external-project.google_project_iam_policy.this" [label="imports.tf:10"];
 }
 ```
 
@@ -120,29 +113,7 @@ Render it:
 tfref . module.cloud | dot -Tsvg -o refs.svg && open refs.svg
 ```
 
-**Reading the graph**: arrows point from dependent → dependency (bottom-to-top). The target is highlighted in blue.  `import.N`, `moved.N`, and `removed.N` nodes represent administrative blocks at source line N — these must be updated or removed when restructuring the target.
-
-### Example JSON Output
-
-```json
-{
-  "target": "module.cloud",
-  "direction": "backward",
-  "workspace": "/path/to/tf-google-organization",
-  "node_count": 4,
-  "nodes": [
-    {
-      "full_addr": "local.cloud",
-      "addr": "local.cloud",
-      "depth": 1,
-      "file": "outputs.tf",
-      "line": 17,
-      "column": 11,
-      "via": "module.cloud"
-    }
-  ]
-}
-```
+**Reading the graph**: arrows point from dependent → dependency (bottom-to-top). The target is highlighted in blue. `import[file:N]`, `moved[file:N]`, and `removed[file:N]` nodes represent administrative blocks at source line N — these must be updated or removed when restructuring the target.
 
 ---
 

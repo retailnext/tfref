@@ -8,13 +8,11 @@
 // Examples:
 //
 //	tfref . module.cloud
-//	tfref . module.cloud --format json
 //	tfref . module.cloud --direction forward
 //	tfref . module.foo.aws_s3_bucket.mybucket
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -39,7 +37,6 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	format := flag.String("format", "dot", "output format: dot (default, renderable with graphviz), json")
 	direction := flag.String("direction", "backward", "traversal direction: backward (who depends on target) or forward (what does target depend on)")
 
 	// Pre-process args so flags may appear anywhere (before or after positional args).
@@ -97,78 +94,7 @@ func main() {
 		results = tfref.DeepBackwardRefs(graph, target)
 	}
 
-	switch *format {
-	case "json":
-		printJSON(absWorkspace, targetStr, *direction, results)
-	default:
-		tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results)
-	}
-}
-
-// relPath returns the workspace-relative form of an absolute path.
-func relPath(base, abs string) string {
-	rel, err := filepath.Rel(base, abs)
-	if err != nil {
-		return abs
-	}
-	return rel
-}
-
-// ── JSON output ───────────────────────────────────────────────────────────────
-
-type jsonNode struct {
-	FullAddr   string `json:"full_addr"`
-	ModulePath string `json:"module_path,omitempty"`
-	Addr       string `json:"addr"`
-	Depth      int    `json:"depth"`
-	File       string `json:"file"`
-	Line       int    `json:"line"`
-	Column     int    `json:"column"`
-	Via        string `json:"via"`
-}
-
-type jsonOutput struct {
-	Target    string     `json:"target"`
-	Direction string     `json:"direction"`
-	Workspace string     `json:"workspace"`
-	NodeCount int        `json:"node_count"`
-	Nodes     []jsonNode `json:"nodes"`
-}
-
-func printJSON(workspace, targetStr, direction string, results []tfref.BackwardResult) {
-	nodes := make([]jsonNode, 0, len(results))
-	seen := map[string]bool{}
-	for _, r := range results {
-		fa := tfref.FullAddr(r.Ref.From)
-		if seen[fa] {
-			continue
-		}
-		seen[fa] = true
-		rng := r.Ref.Subject
-		nodes = append(nodes, jsonNode{
-			FullAddr:   fa,
-			ModulePath: r.Ref.From.ModulePath,
-			Addr:       r.Ref.From.Addr,
-			Depth:      r.Depth,
-			File:       relPath(workspace, rng.Filename),
-			Line:       rng.Start.Line,
-			Column:     rng.Start.Column,
-			Via:        tfref.FullAddr(r.Ref.To),
-		})
-	}
-	out := jsonOutput{
-		Target:    targetStr,
-		Direction: direction,
-		Workspace: workspace,
-		NodeCount: len(nodes),
-		Nodes:     nodes,
-	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
-		fmt.Fprintf(os.Stderr, "error encoding JSON: %v\n", err)
-		os.Exit(1)
-	}
+	tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results)
 }
 
 // ── Arg reordering ────────────────────────────────────────────────────────────
@@ -178,7 +104,6 @@ func printJSON(workspace, targetStr, direction string, results []tfref.BackwardR
 // "tfref --flag value WORKSPACE TARGET".
 func reorderArgs(args []string) []string {
 	valueTakers := map[string]bool{
-		"-format": true, "--format": true,
 		"-direction": true, "--direction": true,
 	}
 	cmd := args[0]

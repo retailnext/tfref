@@ -38,8 +38,6 @@ cd /path/to/workspace && go run ./cmd/tfref/... module.cloud
 ```
 
 **Flags:**
-- `--format dot` — Graphviz DOT graph (default); renderable at https://dreampuf.github.io/GraphvizOnline/
-- `--format json` — machine-readable JSON; recommended for skill/model use
 - `--direction backward` — who depends on target? (default)
 - `--direction forward` — what does target depend on?
 
@@ -57,7 +55,7 @@ Addresses encode module nesting as leading `module.NAME` segments:
 | `module.foo.output.result` | `output "result"` inside module `foo` |
 | `module.foo.module.bar.local.x` | `local.x` inside module `bar` inside module `foo` |
 
-## Example: DOT output (default)
+## Example: DOT output
 
 ```bash
 cd ~/.copilot/skills/tfref && go run ./cmd/tfref/... /path/to/workspace module.cloud
@@ -97,62 +95,10 @@ digraph tfref {
 
 Render locally: `go run ./cmd/tfref/... . module.cloud | dot -Tsvg -o refs.svg && open refs.svg`
 
-## Example: JSON output
-
-```bash
-cd ~/.copilot/skills/tfref && go run ./cmd/tfref/... /path/to/workspace module.cloud --format json
-```
-
-```json
-{
-  "target": "module.cloud",
-  "direction": "backward",
-  "workspace": "/path/to/workspace",
-  "node_count": 354,
-  "nodes": [
-    {
-      "full_addr": "local.cloud",
-      "addr": "local.cloud",
-      "depth": 1,
-      "file": "outputs.tf",
-      "line": 17,
-      "column": 11,
-      "via": "module.cloud"
-    },
-    {
-      "full_addr": "import[cloud_migration.tf:6]",
-      "addr": "import[cloud_migration.tf:6]",
-      "depth": 1,
-      "file": "cloud_migration.tf",
-      "line": 8,
-      "column": 8,
-      "via": "module.cloud.module.external-project.google_project_iam_policy.this"
-    },
-    {
-      "full_addr": "module.prod-app-project",
-      "addr": "module.prod-app-project",
-      "depth": 1,
-      "file": "production_ui_app_project.tf",
-      "line": 42,
-      "column": 25,
-      "via": "module.cloud.output.member_service_account_email_by_id_by_project"
-    }
-  ]
-}
-```
-
-**Interpreting JSON fields:**
-- `full_addr` — full Terraform address of the node that contains the reference
-- `module_path` — present only when the node is inside a child module
-- `addr` — local address of the node within its module
-- `depth` — hops from target (1 = direct reference, 2 = references something that references target, etc.)
-- `file`, `line`, `column` — exact source location of the reference expression
-- `via` — the specific node being referenced (which may be an output or resource inside the target module)
-
 ## Example: forward search
 
 ```bash
-cd ~/.copilot/skills/tfref && go run ./cmd/tfref/... /path/to/workspace module.cloud --direction forward --format json
+cd ~/.copilot/skills/tfref && go run ./cmd/tfref/... /path/to/workspace module.cloud --direction forward
 ```
 
 Returns everything `module.cloud` itself depends on.
