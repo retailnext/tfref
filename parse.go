@@ -209,14 +209,31 @@ func parseModule(
 				pending = append(pending, call)
 
 			case "import", "moved", "removed":
-				// Administrative blocks that name resources and modules by address.
-				// They have no labels, so we generate a synthetic addr from the
-				// block type and opening-brace line number to keep multiple blocks
-				// within the same module distinct.
+				// Administrative blocks referencing resources by Terraform address literal.
+				// Use basename+line for a unique, human-readable node ID, e.g. import[main.tf:42].
+				filename := filepath.Base(block.OpenBraceRange.Filename)
 				line := block.OpenBraceRange.Start.Line
-				addr := fmt.Sprintf("%s.%d", block.Type, line)
+				addr := fmt.Sprintf("%s[%s:%d]", block.Type, filename, line)
 				owner := NodeID{modulePath, addr}
-				walkBodyRefs(block.Body, owner, modulePath, graph)
+				// to= and from= are resource address literals; resolve them with
+				// addressLiteralToNodeID so that module.cloud.google_project.this
+				// becomes NodeID{"module.cloud", "google_project.this"} rather than
+				// the misleading opaque NodeID{"module.cloud", "output.google_project"}.
+				// Other attributes (e.g. id= in import blocks) are plain values.
+				for attrName, attr := range block.Body.Attributes {
+					switch attrName {
+					case "to", "from":
+						for _, trav := range attr.Expr.Variables() {
+							to, ok := addressLiteralToNodeID(trav, modulePath)
+							if !ok || to.Addr == "" {
+								continue
+							}
+							graph.Add(Ref{From: owner, To: to, Subject: trav.SourceRange()})
+						}
+					default:
+						walkExprRefs(attr.Expr, owner, modulePath, graph)
+					}
+				}
 
 			default:
 				addr := blockToAddr(block)

@@ -47,14 +47,11 @@ func moduleChildPath(n NodeID) (string, bool) {
 }
 
 // seedNodes returns the set of nodes to use as BFS roots for a backward
-// search.  For a module call target, this includes both the bare module call
-// node AND all of its child output nodes — because callers that reference
-// specific module outputs get stitched to those output nodes, not to the bare
-// module call node.
-//
-// It also includes opaque "module.X.SOMETHING" intermediate nodes that were
-// not stitched (e.g. from import/moved/removed blocks that reference resources
-// inside the module directly rather than via a named output).
+// search.  For a module call target, this includes the bare module call node
+// AND every node that lives inside that module (at any depth), so that callers
+// which reference specific outputs, resources, or sub-modules are all reachable
+// from the BFS frontier — including import/moved/removed blocks that point
+// directly to resources inside the module rather than to outputs.
 func seedNodes(graph *Graph, target NodeID) []NodeID {
 	seeds := []NodeID{target}
 	childPath, ok := moduleChildPath(target)
@@ -69,27 +66,19 @@ func seedNodes(graph *Graph, target NodeID) []NodeID {
 		}
 	}
 
-	// Child output nodes: callers that reference specific outputs of the module
-	// get stitched to NodeID{childPath, "output.X"} nodes.
+	// Every node whose ModulePath is the target module or any of its
+	// descendant sub-modules.  This covers:
+	//   - output.X nodes (for callers stitched to specific outputs)
+	//   - resource/data nodes (for import/moved/removed pointing to internals)
+	//   - sub-module call nodes inside the target module
+	childPathSlash := childPath + "/"
 	for node := range graph.Backward {
-		if node.ModulePath == childPath && strings.HasPrefix(node.Addr, "output.") {
+		if node.ModulePath == childPath || strings.HasPrefix(node.ModulePath, childPathSlash) {
 			addSeed(node)
 		}
 	}
 	for node := range graph.Forward {
-		if node.ModulePath == childPath && strings.HasPrefix(node.Addr, "output.") {
-			addSeed(node)
-		}
-	}
-
-	// Opaque intermediate nodes like NodeID{"", "module.cloud.google_project"} that
-	// arise when import/moved/removed blocks reference resources inside the module
-	// directly (using a 3-or-4-part traversal like module.cloud.TYPE.name).
-	// These don't get stitched because there is no matching output, so they live
-	// as unresolved nodes in the graph under the caller's module path.
-	opaquePrefix := target.Addr + "." // e.g. "module.cloud."
-	for node := range graph.Backward {
-		if node.ModulePath == target.ModulePath && strings.HasPrefix(node.Addr, opaquePrefix) {
+		if node.ModulePath == childPath || strings.HasPrefix(node.ModulePath, childPathSlash) {
 			addSeed(node)
 		}
 	}

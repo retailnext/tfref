@@ -167,6 +167,85 @@ func blockToAddr(block *hclsyntax.Block) string {
 	return ""
 }
 
+// addressLiteralToNodeID resolves a traversal from an import/moved/removed
+// block's to= or from= attribute.  These attributes use Terraform's resource
+// address syntax, not HCL output-reference syntax:
+//
+//	module.cloud.google_project.this           → NodeID{"module.cloud", "google_project.this"}
+//	module.cloud.module.sub.aws_s3_bucket.b    → NodeID{"module.cloud/module.sub", "aws_s3_bucket.b"}
+//	aws_s3_bucket.old                          → NodeID{callerModulePath, "aws_s3_bucket.old"}
+//	data.google_project.main                   → NodeID{callerModulePath, "data.google_project.main"}
+//
+// Returns (NodeID{}, false) when the traversal cannot be mapped to a resource
+// address (e.g. bare module reference with no resource suffix).
+func addressLiteralToNodeID(trav hcl.Traversal, callerModulePath string) (NodeID, bool) {
+	steps := trav
+	modulePath := callerModulePath
+
+	// Consume leading module.LABEL pairs, building up the absolute module path.
+	for len(steps) >= 2 {
+		var rootName string
+		switch r := steps[0].(type) {
+		case hcl.TraverseRoot:
+			rootName = r.Name
+		case hcl.TraverseAttr:
+			rootName = r.Name
+		}
+		if rootName != "module" {
+			break
+		}
+		label, ok := stepName(steps[1])
+		if !ok {
+			break
+		}
+		modulePath = joinModulePath(modulePath, "module."+label)
+		steps = steps[2:]
+	}
+
+	if len(steps) == 0 {
+		// Bare module reference with no resource suffix — not a resource address.
+		return NodeID{}, false
+	}
+
+	// Extract the first name from the remaining steps.  After module pair
+	// consumption the first remaining step is a TraverseAttr; at the start of
+	// a non-module traversal it is a TraverseRoot, which stepName() does not
+	// handle.  Extract it explicitly.
+	var firstPart string
+	rest := steps[1:]
+	switch r := steps[0].(type) {
+	case hcl.TraverseRoot:
+		firstPart = r.Name
+	case hcl.TraverseAttr:
+		firstPart = r.Name
+	default:
+		return NodeID{}, false
+	}
+
+	// Collect the resource address parts from the remaining steps.
+	// Expected shapes: TYPE.NAME  or  data.TYPE.NAME
+	// Skip index steps (for_each instance keys like ["prod"] or [0]).
+	addrParts := []string{firstPart}
+	for _, step := range rest {
+		name, ok := stepName(step)
+		if !ok {
+			continue // skip TraverseIndex (instance key)
+		}
+		addrParts = append(addrParts, name)
+		if len(addrParts) == 2 && addrParts[0] != "data" {
+			break // TYPE.NAME complete
+		}
+		if len(addrParts) == 3 {
+			break // data.TYPE.NAME complete
+		}
+	}
+
+	if len(addrParts) < 2 {
+		return NodeID{}, false
+	}
+	return NodeID{modulePath, strings.Join(addrParts, ".")}, true
+}
+
 // joinModulePath appends a child call label to a module path.
 //
 //	("",           "module.foo") → "module.foo"

@@ -695,12 +695,23 @@ output "result" { value = aws_s3_bucket.main.id }
 	importFound, movedFound, removedFound := false, false, false
 	for _, r := range results {
 		switch {
-		case strings.HasPrefix(r.Ref.From.Addr, "import."):
+		case strings.HasPrefix(r.Ref.From.Addr, "import["):
 			importFound = true
-		case strings.HasPrefix(r.Ref.From.Addr, "moved."):
+			// Edge target must be the actual resource node, not a synthetic output node.
+			if r.Ref.To.ModulePath != "module.cloud" || r.Ref.To.Addr != "aws_s3_bucket.main" {
+				t.Errorf("import block edge target should be NodeID{module.cloud, aws_s3_bucket.main}, got %+v", r.Ref.To)
+			}
+			// Node ID must include a filename (bracket syntax).
+			if !strings.Contains(r.Ref.From.Addr, ".tf:") {
+				t.Errorf("import node ID should contain filename, got %q", r.Ref.From.Addr)
+			}
+		case strings.HasPrefix(r.Ref.From.Addr, "moved["):
 			movedFound = true
-		case strings.HasPrefix(r.Ref.From.Addr, "removed."):
+		case strings.HasPrefix(r.Ref.From.Addr, "removed["):
 			removedFound = true
+			if r.Ref.To.ModulePath != "module.cloud" || r.Ref.To.Addr != "aws_s3_bucket.old" {
+				t.Errorf("removed block edge target should be NodeID{module.cloud, aws_s3_bucket.old}, got %+v", r.Ref.To)
+			}
 		}
 	}
 	if !importFound {
@@ -737,7 +748,7 @@ moved {
 
 	found := false
 	for _, r := range results {
-		if strings.HasPrefix(r.Ref.From.Addr, "moved.") {
+		if strings.HasPrefix(r.Ref.From.Addr, "moved[") {
 			found = true
 		}
 	}
