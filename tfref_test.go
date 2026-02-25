@@ -1,12 +1,14 @@
 package tfref_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/awalterschulze/gographviz"
 	"github.com/eriksw/tfref"
 )
 
@@ -755,4 +757,134 @@ moved {
 	if !found {
 		t.Errorf("moved block should appear in results for aws_s3_bucket.old; got: %v", results)
 	}
+}
+
+// ── DOT output validation ─────────────────────────────────────────────────────
+
+// assertValidDOT parses dot and fails the test if gographviz reports any error.
+func assertValidDOT(t *testing.T, dot string) {
+	t.Helper()
+	// Strip leading comment lines (// ...) which are not DOT syntax but are
+	// emitted by FormatDOT as a human-readable header.  gographviz does not
+	// accept them.
+	var lines []string
+	for _, line := range strings.Split(dot, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	cleaned := strings.Join(lines, "\n")
+
+	ast, err := gographviz.ParseString(cleaned)
+	if err != nil {
+		t.Fatalf("FormatDOT produced invalid DOT: %v\noutput:\n%s", err, dot)
+	}
+	g := gographviz.NewGraph()
+	if err := gographviz.Analyse(ast, g); err != nil {
+		t.Fatalf("FormatDOT DOT graph analysis failed: %v\noutput:\n%s", err, dot)
+	}
+}
+
+// captureFormatDOT calls FormatDOT and returns the output as a string.
+func captureFormatDOT(workspace, targetStr, direction string, results []tfref.BackwardResult) string {
+	var buf bytes.Buffer
+	tfref.FormatDOT(&buf, workspace, targetStr, direction, results)
+	return buf.String()
+}
+
+// TestFormatDOTBackward checks that a backward search with results produces
+// valid DOT output.
+func TestFormatDOTBackward(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "main.tf"), `
+resource "aws_instance" "web" {}
+resource "aws_eip" "ip" {
+  instance = aws_instance.web.id
+}
+`)
+	graph, err := tfref.ParseWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := tfref.NodeID{Addr: "aws_instance.web"}
+	results := tfref.DeepBackwardRefs(graph, target)
+	if len(results) == 0 {
+		t.Fatal("expected at least one result")
+	}
+	dot := captureFormatDOT(dir, "aws_instance.web", "backward", results)
+	assertValidDOT(t, dot)
+}
+
+// TestFormatDOTForward checks that a forward search produces valid DOT output.
+func TestFormatDOTForward(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "main.tf"), `
+resource "aws_instance" "web" {}
+resource "aws_eip" "ip" {
+  instance = aws_instance.web.id
+}
+`)
+	graph, err := tfref.ParseWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := tfref.NodeID{Addr: "aws_eip.ip"}
+	results := tfref.DeepForwardRefs(graph, target)
+	if len(results) == 0 {
+		t.Fatal("expected at least one result")
+	}
+	dot := captureFormatDOT(dir, "aws_eip.ip", "forward", results)
+	assertValidDOT(t, dot)
+}
+
+// TestFormatDOTEmpty checks that an empty result set still produces valid DOT.
+func TestFormatDOTEmpty(t *testing.T) {
+	dot := captureFormatDOT("", "module.nonexistent", "backward", nil)
+	assertValidDOT(t, dot)
+}
+
+// TestFormatDOTCrossModule checks that a cross-module backward search
+// (output stitching, var stitching) produces valid DOT output.
+func TestFormatDOTCrossModule(t *testing.T) {
+	graph, err := tfref.ParseWorkspace("testdata/workspace-tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := tfref.ParseFullAddr("module.child-a")
+	results := tfref.DeepBackwardRefs(graph, target)
+	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results)
+	assertValidDOT(t, dot)
+}
+
+// TestFormatDOTImportBlocks checks that a workspace containing import/moved/
+// removed blocks produces valid DOT output (node IDs contain brackets and
+// colons which must be properly quoted).
+func TestFormatDOTImportBlocks(t *testing.T) {
+	dir := t.TempDir()
+	childDir := filepath.Join(dir, "modules", "cloud")
+	writeFile(t, filepath.Join(dir, "main.tf"), `
+module "cloud" { source = "./modules/cloud" }
+import {
+  to = module.cloud.aws_s3_bucket.main
+  id = "bucket-id"
+}
+moved {
+  from = module.cloud.aws_s3_bucket.legacy
+  to   = module.cloud.aws_s3_bucket.main
+}
+`)
+	writeFile(t, filepath.Join(childDir, "main.tf"), `
+resource "aws_s3_bucket" "main" {}
+resource "aws_s3_bucket" "legacy" {}
+`)
+	graph, err := tfref.ParseWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := tfref.NodeID{Addr: "module.cloud"}
+	results := tfref.DeepBackwardRefs(graph, target)
+	dot := captureFormatDOT(dir, "module.cloud", "backward", results)
+	assertValidDOT(t, dot)
 }

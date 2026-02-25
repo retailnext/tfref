@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/eriksw/tfref"
@@ -112,7 +111,7 @@ func main() {
 	case "json":
 		printJSON(absWorkspace, targetStr, *direction, results)
 	default:
-		printDOT(absWorkspace, targetStr, *direction, results)
+		tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results)
 	}
 }
 
@@ -124,95 +123,8 @@ func relPath(base, abs string) string {
 	}
 	return rel
 }
-
-// fullAddr converts a NodeID to the canonical full Terraform address string.
-func fullAddr(n tfref.NodeID) string {
-	if n.ModulePath == "" {
-		return n.Addr
-	}
-	parts := strings.Split(n.ModulePath, "/")
-	return strings.Join(parts, ".") + "." + n.Addr
-}
-
-// dotID returns a DOT-safe quoted node identifier.
-func dotID(s string) string {
-	// Wrap in double-quotes; escape any embedded double-quotes.
-	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
-}
-
-// printDOT emits a Graphviz DOT digraph.
-//
-// Nodes are full Terraform addresses.  Edge labels show the source file and
-// line where the reference expression appears.  The target node is styled with
-// a double border so it is easy to locate in a rendered graph.
-//
-// Render with: dot -Tsvg out.dot > out.svg
-// Or paste into https://dreampuf.github.io/GraphvizOnline/
 func printDOT(workspace, targetStr, direction string, results []tfref.BackwardResult) {
-	// Comment header with context.
-	fmt.Printf("// tfref %s: %s\n", direction, targetStr)
-	fmt.Printf("// workspace: %s\n", workspace)
-	fmt.Printf("// %d node(s) found\n", len(results))
-	if len(results) == 0 {
-		fmt.Printf("// (nothing found — the target may not exist or have no %s)\n", direction+" references")
-	}
-	fmt.Println()
-	fmt.Println("digraph tfref {")
-	fmt.Println("  rankdir=BT;  // bottom-to-top: dependents above, dependencies below")
-	fmt.Println("  node [fontname=\"Helvetica\", fontsize=10];")
-	fmt.Println("  edge [fontname=\"Helvetica\", fontsize=9, color=\"#555555\"];")
-	fmt.Println()
-
-	// Target node — double-bordered box so it stands out.
-	fmt.Printf("  %-40s [shape=box, style=\"filled,bold\", fillcolor=\"#d0e8ff\", label=%s];\n",
-		dotID(targetStr), dotID(targetStr))
-
-	// Collect all unique node addresses.
-	type edge struct{ from, to, file string; line int }
-	var edges []edge
-	seenNodes := map[string]bool{targetStr: true}
-
-	for _, r := range results {
-		fa := fullAddr(r.Ref.From)
-		seenNodes[fa] = true
-		rng := r.Ref.Subject
-		edges = append(edges, edge{
-			from: fa,
-			to:   fullAddr(r.Ref.To),
-			file: relPath(workspace, rng.Filename),
-			line: rng.Start.Line,
-		})
-	}
-
-	// Emit non-target node declarations, sorted for stable output.
-	nodeList := make([]string, 0, len(seenNodes))
-	for n := range seenNodes {
-		if n != targetStr {
-			nodeList = append(nodeList, n)
-		}
-	}
-	sort.Strings(nodeList)
-	if len(nodeList) > 0 {
-		for _, n := range nodeList {
-			fmt.Printf("  %s;\n", dotID(n))
-		}
-		fmt.Println()
-	}
-
-	// Emit edges, sorted for stable output.
-	sort.Slice(edges, func(i, j int) bool {
-		if edges[i].from != edges[j].from {
-			return edges[i].from < edges[j].from
-		}
-		return edges[i].to < edges[j].to
-	})
-	for _, e := range edges {
-		label := fmt.Sprintf("%s:%d", e.file, e.line)
-		fmt.Printf("  %-40s -> %-40s [label=%s];\n",
-			dotID(e.from), dotID(e.to), dotID(label))
-	}
-
-	fmt.Println("}")
+	tfref.FormatDOT(os.Stdout, workspace, targetStr, direction, results)
 }
 
 // ── JSON output ───────────────────────────────────────────────────────────────
@@ -240,7 +152,7 @@ func printJSON(workspace, targetStr, direction string, results []tfref.BackwardR
 	nodes := make([]jsonNode, 0, len(results))
 	seen := map[string]bool{}
 	for _, r := range results {
-		fa := fullAddr(r.Ref.From)
+		fa := tfref.FullAddr(r.Ref.From)
 		if seen[fa] {
 			continue
 		}
@@ -254,7 +166,7 @@ func printJSON(workspace, targetStr, direction string, results []tfref.BackwardR
 			File:       relPath(workspace, rng.Filename),
 			Line:       rng.Start.Line,
 			Column:     rng.Start.Column,
-			Via:        fullAddr(r.Ref.To),
+			Via:        tfref.FullAddr(r.Ref.To),
 		})
 	}
 	out := jsonOutput{
