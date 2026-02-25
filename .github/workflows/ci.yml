@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+env:
+  GOLANGCI_LINT_VERSION: v2.10.1
+
 jobs:
   lint:
     name: Lint
@@ -16,7 +19,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v9.2.0
         with:
-          version: v2.10.1
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
 
   test:
     name: Test
