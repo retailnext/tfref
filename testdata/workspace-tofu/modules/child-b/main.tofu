@@ -1,23 +1,21 @@
 variable "env" {}
 
-resource "aws_instance" "app" {
-  ami           = "ami-12345678"
-  instance_type = "t3.micro"
-  tags = {
-    Env = var.env
-  }
+resource "random_string" "app" {
+  length  = 8
+  special = false
+  keepers = { env = var.env }
 }
 
-resource "aws_eip" "app" {
-  instance = aws_instance.app.id
+resource "random_string" "derived" {
+  length  = 16
+  special = false
+  keepers = { source = random_string.app.result }
 }
 
-# derived_output depends on aws_instance.app (via aws_eip.app)
 output "derived_output" {
-  value = aws_eip.app.public_ip
+  value = random_string.derived.result
 }
 
-# independent_output does NOT depend on aws_instance.app
 output "independent_output" {
   value = var.env
 }

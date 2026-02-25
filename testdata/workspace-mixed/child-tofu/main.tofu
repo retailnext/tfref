@@ -1,10 +1,11 @@
-variable "vpc_id" {}
+variable "input" {}
 
-resource "aws_subnet" "b" {
-  vpc_id     = var.vpc_id
-  cidr_block = "10.0.2.0/24"
+resource "random_string" "b" {
+  length  = 8
+  special = false
+  keepers = { src = var.input }
 }
 
 output "result" {
-  value = aws_subnet.b.id
+  value = random_string.b.result
 }

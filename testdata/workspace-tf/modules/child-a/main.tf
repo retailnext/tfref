@@ -1,15 +1,15 @@
 variable "env" {}
-variable "vpc_id" {}
+variable "input" {}
 
-resource "aws_subnet" "main" {
-  vpc_id            = var.vpc_id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1a"
-  tags = {
-    Env = var.env
+resource "random_string" "resource" {
+  length  = 8
+  special = false
+  keepers = {
+    env   = var.env
+    input = var.input
   }
 }
 
 output "result" {
-  value = aws_subnet.main.id
+  value = random_string.resource.result
 }

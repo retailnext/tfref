@@ -1,7 +1,7 @@
-resource "aws_s3_bucket" "data" {
-  bucket = "my-data-bucket"
+resource "random_id" "data" {
+  byte_length = 8
 }
 
 output "result" {
-  value = aws_s3_bucket.data.id
+  value = random_id.data.hex
 }

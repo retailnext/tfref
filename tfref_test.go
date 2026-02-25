@@ -41,18 +41,18 @@ func hasRef(results []tfref.BackwardResult, fromModule, fromAddr string) bool {
 func TestDirectRef(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_vpc" "main" {}
-resource "aws_subnet" "public" {
-  vpc_id = aws_vpc.main.id
+resource "terraform_data" "main" {}
+resource "terraform_data" "public" {
+  input = terraform_data.main.id
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
-	if !hasRef(results, "", "aws_subnet.public") {
-		t.Errorf("expected aws_subnet.public to reference aws_vpc.main; got: %v", results)
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.main"})
+	if !hasRef(results, "", "terraform_data.public") {
+		t.Errorf("expected terraform_data.public to reference terraform_data.main; got: %v", results)
 	}
 }
 
@@ -62,9 +62,9 @@ resource "aws_subnet" "public" {
 func TestLocalGranularity(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_instance" "web" {}
+resource "terraform_data" "web" {}
 locals {
-  instance_id   = aws_instance.web.id
+  instance_id   = terraform_data.web.id
   unrelated_val = "hello"
 }
 output "out" {
@@ -75,7 +75,7 @@ output "out" {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_instance.web"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.web"})
 	if !hasRef(results, "", "local.instance_id") {
 		t.Error("expected local.instance_id -> aws_instance.web")
 	}
@@ -91,16 +91,16 @@ output "out" {
 func TestStringInterpolation(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }
+resource "terraform_data" "main" {}
 locals {
-  tag = "vpc-${aws_vpc.main.id}-suffix"
+  tag = "pfx-${terraform_data.main.id}-suffix"
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.main"})
 	if !hasRef(results, "", "local.tag") {
 		t.Errorf("expected local.tag via string interpolation; got: %v", results)
 	}
@@ -111,16 +111,16 @@ func TestTernaryRef(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
 variable "flag" {}
-resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }
+resource "terraform_data" "main" {}
 locals {
-  chosen = var.flag ? aws_vpc.main.id : "fallback"
+  chosen = var.flag ? terraform_data.main.id : "fallback"
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.main"})
 	if !hasRef(results, "", "local.chosen") {
 		t.Errorf("expected local.chosen via ternary; got: %v", results)
 	}
@@ -130,17 +130,17 @@ locals {
 func TestForExpressionRef(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_subnet" "pub"  { cidr_block = "10.0.1.0/24" }
-resource "aws_subnet" "priv" { cidr_block = "10.0.2.0/24" }
+resource "terraform_data" "pub"  {}
+resource "terraform_data" "priv" {}
 locals {
-  subnet_ids = [for s in [aws_subnet.pub, aws_subnet.priv] : s.id]
+  subnet_ids = [for s in [terraform_data.pub, terraform_data.priv] : s.id]
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_subnet.pub"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.pub"})
 	if !hasRef(results, "", "local.subnet_ids") {
 		t.Errorf("expected local.subnet_ids via for-expression; got: %v", results)
 	}
@@ -150,19 +150,19 @@ locals {
 func TestSplatRef(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_instance" "web" {
+resource "terraform_data" "web" {
   count = 2
-  ami   = "ami-0"
+  input = count.index
 }
 locals {
-  all_ids = aws_instance.web[*].id
+  all_ids = terraform_data.web[*].output
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_instance.web"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.web"})
 	if !hasRef(results, "", "local.all_ids") {
 		t.Errorf("expected local.all_ids via splat; got: %v", results)
 	}
@@ -172,16 +172,19 @@ locals {
 func TestBracketAccess(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_vpc" "main" {}
+resource "terraform_data" "vpc" {
+  for_each = { main = "10.0.0.0/16" }
+  input    = each.value
+}
 locals {
-  vpc_id = aws_vpc["main"].id
+  vpc_id = terraform_data.vpc["main"].output
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.vpc"})
 	if !hasRef(results, "", "local.vpc_id") {
 		t.Errorf("expected local.vpc_id via bracket syntax; got: %v", results)
 	}
@@ -191,18 +194,18 @@ locals {
 func TestDependsOn(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_vpc" "main" {}
-resource "aws_internet_gateway" "gw" {
-  depends_on = [aws_vpc.main]
+resource "terraform_data" "main" {}
+resource "terraform_data" "gw" {
+  depends_on = [terraform_data.main]
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
-	if !hasRef(results, "", "aws_internet_gateway.gw") {
-		t.Errorf("expected aws_internet_gateway.gw depends_on aws_vpc.main; got: %v", results)
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.main"})
+	if !hasRef(results, "", "terraform_data.gw") {
+		t.Errorf("expected terraform_data.gw depends_on terraform_data.main; got: %v", results)
 	}
 }
 
@@ -211,25 +214,28 @@ resource "aws_internet_gateway" "gw" {
 func TestCountRef(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_subnet" "sn" {
-  count      = 3
-  cidr_block = "10.0.0.0/24"
+resource "terraform_data" "sn" {
+  count = 3
+  input = count.index
+}
+resource "terraform_data" "via_count" {
+  count = 3
+  input = terraform_data.sn[count.index].output
 }
 locals {
-  first     = aws_subnet.sn[0].id
-  via_count = aws_subnet.sn[count.index].id
+  first = terraform_data.sn[0].output
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_subnet.sn"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.sn"})
 	if !hasRef(results, "", "local.first") {
-		t.Error("expected local.first -> aws_subnet.sn[0]")
+		t.Error("expected local.first -> terraform_data.sn[0]")
 	}
-	if !hasRef(results, "", "local.via_count") {
-		t.Error("expected local.via_count -> aws_subnet.sn[count.index]")
+	if !hasRef(results, "", "terraform_data.via_count") {
+		t.Error("expected terraform_data.via_count -> terraform_data.sn[count.index]")
 	}
 }
 
@@ -237,18 +243,18 @@ locals {
 func TestPositionInfo(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_vpc" "main" {}
-resource "aws_subnet" "public" {
-  vpc_id = aws_vpc.main.id
+resource "terraform_data" "main" {}
+resource "terraform_data" "public" {
+  input = terraform_data.main.id
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.main"})
 	for _, r := range results {
-		if r.Ref.From.Addr == "aws_subnet.public" {
+		if r.Ref.From.Addr == "terraform_data.public" {
 			if r.Ref.Subject.Start.Line == 0 {
 				t.Error("expected non-zero line in Ref.Subject")
 			}
@@ -258,7 +264,7 @@ resource "aws_subnet" "public" {
 			return
 		}
 	}
-	t.Error("ref from aws_subnet.public not found")
+	t.Error("ref from terraform_data.public not found")
 }
 
 // ── Cross-module tests ────────────────────────────────────────────────────────
@@ -275,14 +281,14 @@ module "child" { source = "./modules/child" }
 locals { bar = module.child.result }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-resource "aws_instance" "web" {}
-output "result" { value = aws_instance.web.id }
+resource "terraform_data" "web" {}
+output "result" { value = terraform_data.web.id }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{ModulePath: "module.child", Addr: "aws_instance.web"}
+	target := tfref.NodeID{ModulePath: "module.child", Addr: "terraform_data.web"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if !hasRef(results, "", "local.bar") {
 		t.Errorf("expected root::local.bar transitively refs module.child::aws_instance.web; got: %v", results)
@@ -295,24 +301,24 @@ func TestCrossModuleVarStitch(t *testing.T) {
 	dir := t.TempDir()
 	childDir := filepath.Join(dir, "modules", "child")
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_vpc" "main" {}
+resource "terraform_data" "main" {}
 module "child" {
   source = "./modules/child"
-  vpc_id = aws_vpc.main.id
+  input  = terraform_data.main.id
 }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-variable "vpc_id" {}
-resource "aws_subnet" "pub" { vpc_id = var.vpc_id }
-output "subnet_id" { value = aws_subnet.pub.id }
+variable "input" {}
+resource "terraform_data" "pub" { input = var.input }
+output "subnet_id" { value = terraform_data.pub.id }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
-	if !hasRef(results, "module.child", "aws_subnet.pub") {
-		t.Errorf("expected module.child::aws_subnet.pub transitively depends on root::aws_vpc.main; got: %v", results)
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "terraform_data.main"})
+	if !hasRef(results, "module.child", "terraform_data.pub") {
+		t.Errorf("expected module.child::terraform_data.pub transitively depends on root::terraform_data.main; got: %v", results)
 	}
 }
 
@@ -336,14 +342,14 @@ locals {
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
 variable "name" {}
-resource "aws_s3_bucket" "b" { bucket = var.name }
-output "result" { value = aws_s3_bucket.b.id }
+resource "terraform_data" "b" { input = var.name }
+output "result" { value = terraform_data.b.id }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{ModulePath: "module.child", Addr: "aws_s3_bucket.b"}
+	target := tfref.NodeID{ModulePath: "module.child", Addr: "terraform_data.b"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if !hasRef(results, "", "local.results") {
 		t.Errorf("expected root::local.results via for_each module (unknown key); got: %v", results)
@@ -367,14 +373,14 @@ locals {
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
 variable "name" {}
-resource "aws_s3_bucket" "b" { bucket = var.name }
-output "result" { value = aws_s3_bucket.b.id }
+resource "terraform_data" "b" { input = var.name }
+output "result" { value = terraform_data.b.id }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{ModulePath: "module.child", Addr: "aws_s3_bucket.b"}
+	target := tfref.NodeID{ModulePath: "module.child", Addr: "terraform_data.b"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if !hasRef(results, "", "local.prod_result") {
 		t.Errorf("expected root::local.prod_result via string for_each key; got: %v", results)
@@ -398,14 +404,14 @@ locals {
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
 variable "index" {}
-resource "aws_s3_bucket" "b" { bucket = "bucket-${var.index}" }
-output "result" { value = aws_s3_bucket.b.id }
+resource "terraform_data" "b" { input = "bucket-${var.index}" }
+output "result" { value = terraform_data.b.id }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{ModulePath: "module.child", Addr: "aws_s3_bucket.b"}
+	target := tfref.NodeID{ModulePath: "module.child", Addr: "terraform_data.b"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if !hasRef(results, "", "local.first") {
 		t.Errorf("expected root::local.first via count module index; got: %v", results)
@@ -424,8 +430,8 @@ func TestRemoteModuleFromCache(t *testing.T) {
 	cachedDir := filepath.Join(dir, ".terraform", "modules", "vpc")
 	writeFile(t, filepath.Join(cachedDir, "main.tf"), `
 variable "cidr" {}
-resource "aws_vpc" "this" { cidr_block = var.cidr }
-output "vpc_id" { value = aws_vpc.this.id }
+resource "terraform_data" "this" { input = var.cidr }
+output "vpc_id" { value = terraform_data.this.id }
 `)
 
 	// Write the modules manifest pointing to the cached directory
@@ -445,7 +451,7 @@ output "vpc_id" { value = aws_vpc.this.id }
 module "vpc" {
   source  = "registry.terraform.io/hashicorp/vpc/aws"
   version = "1.0.0"
-  cidr    = "10.0.0.0/16"
+  input   = "10.0.0.0/16"
 }
 locals {
   vpc_id = module.vpc.vpc_id
@@ -458,7 +464,7 @@ locals {
 	}
 
 	// Backward refs from the remote module's resource should reach root::local.vpc_id
-	target := tfref.NodeID{ModulePath: "module.vpc", Addr: "aws_vpc.this"}
+	target := tfref.NodeID{ModulePath: "module.vpc", Addr: "terraform_data.this"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if !hasRef(results, "", "local.vpc_id") {
 		t.Errorf("expected root::local.vpc_id to reference module.vpc::aws_vpc.this via remote module cache; got: %v", results)
@@ -512,9 +518,9 @@ func TestTofuWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseWorkspace: %v", err)
 	}
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "random_string.main"})
 	if len(results) == 0 {
-		t.Error("expected non-empty backward refs from aws_vpc.main in .tofu workspace")
+		t.Error("expected non-empty backward refs from random_string.main in .tofu workspace")
 	}
 }
 
@@ -526,12 +532,12 @@ func TestMixedWorkspace(t *testing.T) {
 		t.Fatalf("ParseWorkspace: %v", err)
 	}
 	// local.combined is in .tf and references outputs from both .tf and .tofu child modules
-	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "aws_vpc.main"})
+	results := tfref.DeepBackwardRefs(graph, tfref.NodeID{Addr: "random_string.main"})
 	if !hasRef(results, "", "local.combined") {
-		t.Errorf("expected local.combined to transitively reference aws_vpc.main; got: %v", results)
+		t.Errorf("expected local.combined to transitively reference random_string.main; got: %v", results)
 	}
 	if !hasRef(results, "", "module.tofu_child") {
-		t.Errorf("expected module.tofu_child to reference aws_vpc.main; got: %v", results)
+		t.Errorf("expected module.tofu_child to reference random_string.main; got: %v", results)
 	}
 }
 
@@ -548,7 +554,7 @@ func TestModuleBoundaryPrecision(t *testing.T) {
 		t.Fatalf("ParseWorkspace: %v", err)
 	}
 
-	target := tfref.NodeID{ModulePath: "module.foo", Addr: "aws_s3_bucket.data"}
+	target := tfref.NodeID{ModulePath: "module.foo", Addr: "random_id.data"}
 	results := tfref.DeepBackwardRefs(graph, target)
 
 	if !hasRef(results, "", "module.zee") {
@@ -566,7 +572,7 @@ func TestForEachModulePrecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseWorkspace: %v", err)
 	}
-	target := tfref.NodeID{ModulePath: "module.buckets", Addr: "aws_s3_bucket.data"}
+	target := tfref.NodeID{ModulePath: "module.buckets", Addr: "random_id.data"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if !hasRef(results, "", "local.prod_result") {
 		t.Errorf("expected local.prod_result via module.buckets[string key]; got: %v", results)
@@ -604,16 +610,16 @@ locals {
 }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-resource "aws_vpc" "this" {}
+resource "terraform_data" "this" {}
 
 output "vpc_sa_by_id" {
   value = {}
 }
 output "output_a" {
-  value = aws_vpc.this.id
+  value = terraform_data.this.id
 }
 output "output_b" {
-  value = aws_vpc.this.arn
+  value = terraform_data.this.id
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
@@ -664,27 +670,27 @@ module "cloud" {
 
 # import block referencing a resource inside module.cloud
 import {
-  to = module.cloud.aws_s3_bucket.main
+  to = module.cloud.terraform_data.main
   id = "my-bucket-id"
 }
 
 # moved block with from = resource inside module.cloud
 moved {
-  from = module.cloud.aws_s3_bucket.legacy
-  to   = module.cloud.aws_s3_bucket.main
+  from = module.cloud.terraform_data.legacy
+  to   = module.cloud.terraform_data.main
 }
 
 # removed block referencing a resource inside module.cloud
 removed {
-  from = module.cloud.aws_s3_bucket.old
+  from = module.cloud.terraform_data.old
   lifecycle {
     destroy = false
   }
 }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-resource "aws_s3_bucket" "main" {}
-output "result" { value = aws_s3_bucket.main.id }
+resource "terraform_data" "main" {}
+output "result" { value = terraform_data.main.id }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
@@ -700,8 +706,8 @@ output "result" { value = aws_s3_bucket.main.id }
 		case strings.HasPrefix(r.Ref.From.Addr, "import["):
 			importFound = true
 			// Edge target must be the actual resource node, not a synthetic output node.
-			if r.Ref.To.ModulePath != "module.cloud" || r.Ref.To.Addr != "aws_s3_bucket.main" {
-				t.Errorf("import block edge target should be NodeID{module.cloud, aws_s3_bucket.main}, got %+v", r.Ref.To)
+			if r.Ref.To.ModulePath != "module.cloud" || r.Ref.To.Addr != "terraform_data.main" {
+				t.Errorf("import block edge target should be NodeID{module.cloud, terraform_data.main}, got %+v", r.Ref.To)
 			}
 			// Node ID must include a filename (bracket syntax).
 			if !strings.Contains(r.Ref.From.Addr, ".tf:") {
@@ -711,8 +717,8 @@ output "result" { value = aws_s3_bucket.main.id }
 			movedFound = true
 		case strings.HasPrefix(r.Ref.From.Addr, "removed["):
 			removedFound = true
-			if r.Ref.To.ModulePath != "module.cloud" || r.Ref.To.Addr != "aws_s3_bucket.old" {
-				t.Errorf("removed block edge target should be NodeID{module.cloud, aws_s3_bucket.old}, got %+v", r.Ref.To)
+			if r.Ref.To.ModulePath != "module.cloud" || r.Ref.To.Addr != "terraform_data.old" {
+				t.Errorf("removed block edge target should be NodeID{module.cloud, terraform_data.old}, got %+v", r.Ref.To)
 			}
 		}
 	}
@@ -732,12 +738,12 @@ output "result" { value = aws_s3_bucket.main.id }
 func TestMovedBlockNonModule(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_s3_bucket" "old" {}
-resource "aws_s3_bucket" "new" {}
+resource "terraform_data" "old" {}
+resource "terraform_data" "new" {}
 
 moved {
-  from = aws_s3_bucket.old
-  to   = aws_s3_bucket.new
+  from = terraform_data.old
+  to   = terraform_data.new
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
@@ -745,7 +751,7 @@ moved {
 		t.Fatal(err)
 	}
 
-	target := tfref.NodeID{Addr: "aws_s3_bucket.old"}
+	target := tfref.NodeID{Addr: "terraform_data.old"}
 	results := tfref.DeepBackwardRefs(graph, target)
 
 	found := false
@@ -755,7 +761,7 @@ moved {
 		}
 	}
 	if !found {
-		t.Errorf("moved block should appear in results for aws_s3_bucket.old; got: %v", results)
+		t.Errorf("moved block should appear in results for terraform_data.old; got: %v", results)
 	}
 }
 
@@ -799,21 +805,21 @@ func captureFormatDOT(workspace, targetStr, direction string, results []tfref.Ba
 func TestFormatDOTBackward(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_instance" "web" {}
-resource "aws_eip" "ip" {
-  instance = aws_instance.web.id
+resource "terraform_data" "web" {}
+resource "terraform_data" "ip" {
+  input = terraform_data.web.id
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{Addr: "aws_instance.web"}
+	target := tfref.NodeID{Addr: "terraform_data.web"}
 	results := tfref.DeepBackwardRefs(graph, target)
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "aws_instance.web", "backward", results)
+	dot := captureFormatDOT(dir, "terraform_data.web", "backward", results)
 	assertValidDOT(t, dot)
 }
 
@@ -821,21 +827,21 @@ resource "aws_eip" "ip" {
 func TestFormatDOTForward(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "main.tf"), `
-resource "aws_instance" "web" {}
-resource "aws_eip" "ip" {
-  instance = aws_instance.web.id
+resource "terraform_data" "web" {}
+resource "terraform_data" "ip" {
+  input = terraform_data.web.id
 }
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.NodeID{Addr: "aws_eip.ip"}
+	target := tfref.NodeID{Addr: "terraform_data.ip"}
 	results := tfref.DeepForwardRefs(graph, target)
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "aws_eip.ip", "forward", results)
+	dot := captureFormatDOT(dir, "terraform_data.ip", "forward", results)
 	assertValidDOT(t, dot)
 }
 
@@ -852,7 +858,7 @@ func TestFormatDOTCrossModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := tfref.ParseFullAddr("module.child-a")
+	target := tfref.ParseFullAddr("module.child_a")
 	results := tfref.DeepBackwardRefs(graph, target)
 	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results)
 	assertValidDOT(t, dot)
@@ -867,17 +873,17 @@ func TestFormatDOTImportBlocks(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "main.tf"), `
 module "cloud" { source = "./modules/cloud" }
 import {
-  to = module.cloud.aws_s3_bucket.main
+  to = module.cloud.terraform_data.main
   id = "bucket-id"
 }
 moved {
-  from = module.cloud.aws_s3_bucket.legacy
-  to   = module.cloud.aws_s3_bucket.main
+  from = module.cloud.terraform_data.legacy
+  to   = module.cloud.terraform_data.main
 }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-resource "aws_s3_bucket" "main" {}
-resource "aws_s3_bucket" "legacy" {}
+resource "terraform_data" "main" {}
+resource "terraform_data" "legacy" {}
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
@@ -895,23 +901,23 @@ func TestNodeExists(t *testing.T) {
 	childDir := filepath.Join(dir, "modules", "cloud")
 	writeFile(t, filepath.Join(dir, "main.tf"), `
 module "cloud" { source = "./modules/cloud" }
-resource "aws_s3_bucket" "present" {}
+resource "terraform_data" "present" {}
 
-# removed block makes aws_s3_bucket.legacy count as existing even though
+# removed block makes terraform_data.legacy count as existing even though
 # there is no resource block for it.
 removed {
-  from = aws_s3_bucket.legacy
+  from = terraform_data.legacy
   lifecycle { destroy = false }
 }
 
-# import block makes module.cloud.aws_s3_bucket.archived count as existing.
+# import block makes module.cloud.terraform_data.archived count as existing.
 import {
-  to = module.cloud.aws_s3_bucket.archived
+  to = module.cloud.terraform_data.archived
   id = "archived-bucket"
 }
 `)
 	writeFile(t, filepath.Join(childDir, "main.tf"), `
-resource "aws_s3_bucket" "archived" {}
+resource "terraform_data" "archived" {}
 `)
 	graph, err := tfref.ParseWorkspace(dir)
 	if err != nil {
@@ -922,13 +928,13 @@ resource "aws_s3_bucket" "archived" {}
 		addr   string
 		exists bool
 	}{
-		{"module.cloud", true},                          // module block present
-		{"aws_s3_bucket.present", true},                 // resource block present
-		{"aws_s3_bucket.legacy", true},                  // only a removed block, still counts
-		{"module.cloud.aws_s3_bucket.archived", true},   // defined in child + import block
-		{"aws_s3_bucket.typo", false},                   // does not exist
-		{"module.nonexistent", false},                   // no module block
-		{"local.doesnotexist", false},                   // no locals attr
+		{"module.cloud", true},                            // module block present
+		{"terraform_data.present", true},                  // resource block present
+		{"terraform_data.legacy", true},                   // only a removed block, still counts
+		{"module.cloud.terraform_data.archived", true},    // defined in child + import block
+		{"terraform_data.typo", false},                    // does not exist
+		{"module.nonexistent", false},                     // no module block
+		{"local.doesnotexist", false},                     // no locals attr
 	}
 	for _, tc := range cases {
 		target := tfref.ParseFullAddr(tc.addr)

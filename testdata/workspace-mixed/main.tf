@@ -1,17 +1,18 @@
 # Mixed workspace: root uses .tf, one child uses .tf, another uses .tofu.
 
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
+resource "random_string" "main" {
+  length  = 8
+  special = false
 }
 
 module "tf_child" {
   source = "./child-tf"
-  vpc_id = aws_vpc.main.id
+  input  = random_string.main.result
 }
 
 module "tofu_child" {
   source = "./child-tofu"
-  vpc_id = aws_vpc.main.id
+  input  = random_string.main.result
 }
 
 locals {

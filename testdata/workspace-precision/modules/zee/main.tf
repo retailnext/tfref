@@ -1,19 +1,11 @@
 variable "derived_data" {}
 
-resource "aws_cloudwatch_metric_alarm" "alarm" {
-  alarm_name          = "derived-alarm"
-  comparison_operator = "GreaterThanThreshold"
-  dimensions = {
-    BucketName = var.derived_data
-  }
-  evaluation_periods  = 1
-  metric_name         = "NumberOfObjects"
-  namespace           = "AWS/S3"
-  period              = 86400
-  statistic           = "Average"
-  threshold           = 1000
+resource "random_string" "alarm" {
+  length  = 8
+  special = false
+  keepers = { data = var.derived_data }
 }
 
 output "final_output" {
-  value = aws_cloudwatch_metric_alarm.alarm.id
+  value = random_string.alarm.result
 }

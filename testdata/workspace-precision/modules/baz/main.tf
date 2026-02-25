@@ -1,11 +1,11 @@
 variable "independent_data" {}
 
-resource "aws_ssm_parameter" "param" {
-  name  = "/app/data"
-  type  = "String"
-  value = var.independent_data
+resource "random_string" "param" {
+  length  = 8
+  special = false
+  keepers = { data = var.independent_data }
 }
 
-output "param_arn" {
-  value = aws_ssm_parameter.param.arn
+output "param_output" {
+  value = random_string.param.result
 }

@@ -1,67 +1,46 @@
 # Root workspace exercising all reference forms.
 
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
-  tags = {
-    Name = "main-${var.env}"  # string interpolation
-  }
+resource "random_string" "main" {
+  length  = 8
+  special = false
 }
 
-resource "aws_security_group" "web" {
-  vpc_id = aws_vpc.main.id  # plain attribute reference
+resource "random_string" "web" {
+  length  = random_string.main.length  # plain attribute reference
+  special = false
 }
 
-resource "aws_security_group" "db" {
-  # depends_on explicit dependency
-  depends_on = [aws_vpc.main]
-  vpc_id     = aws_vpc.main.id
+resource "random_string" "db" {
+  depends_on = [random_string.main]   # explicit dependency
+  length     = random_string.main.length
+  special    = false
 }
 
-# Bracket-access syntax: resource["name"] is equivalent to resource.name
+resource "random_integer" "items" {
+  count = 3
+  min   = 1
+  max   = 100
+}
+
 locals {
-  vpc_via_bracket = aws_vpc["main"].id
-  sg_ids          = [aws_security_group.web.id, aws_security_group.db.id]
-
-  # Ternary conditional — both branches captured
-  selected_cidr = var.env == "prod" ? aws_vpc.main.cidr_block : "10.1.0.0/16"
-
-  # For-expression over a resource set
-  sg_map = { for sg in [aws_security_group.web, aws_security_group.db] : sg.id => sg.name }
-
-  # Splat expression
-  all_sg_ids = [aws_security_group.web.id]
-
-  # Reference through child-a output
-  child_a_value = module.child_a.result
-
-  # Reference through child-b output (depends on child-a inside child-b)
-  child_b_derived = module.child_b.derived_output
+  ids            = [random_string.web.result, random_string.db.result]
+  selected       = var.env == "prod" ? random_string.main.result : "fallback"  # ternary
+  all_results_fe = [for r in [random_string.web, random_string.db] : r.result]  # for-expr
+  all_item_ids   = random_integer.items[*].result  # splat
+  child_a_result = module.child_a["prod"].result
+  child_b_result = module.child_b[0].derived_output
+  all_child_a    = [for k, v in module.child_a : v.result]
 }
 
-# Module call: child_a uses for_each (string keys)
 module "child_a" {
   source   = "./modules/child-a"
   for_each = { prod = "prod", dev = "dev" }
   env      = each.key
-  vpc_id   = aws_vpc.main.id
+  input    = random_string.main.result
 }
 
-# Module call: child_b with count
 module "child_b" {
   source = "./modules/child-b"
   count  = 2
   env    = var.env
-}
-
-data "aws_availability_zones" "available" {}
-
-# Reference to for_each module with string key
-locals {
-  specific_instance = module.child_a["prod"].result
-
-  # Reference to count module with index
-  first_child_b = module.child_b[0].derived_output
-
-  # Reference to for_each module with each.key (in a for-expression context)
-  all_results = [for k, v in module.child_a : v.result]
 }
