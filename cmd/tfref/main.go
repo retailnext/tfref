@@ -73,6 +73,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if normalized, changed := tfref.NormalizeInstanceKeys(targetStr); changed {
+		fmt.Fprintf(os.Stderr, "warning: ignoring instance key in target address; using %q instead\n", normalized)
+		targetStr = normalized
+	}
+
 	target := tfref.ParseFullAddr(targetStr)
 	if target.Addr == "" {
 		fmt.Fprintf(os.Stderr, "error: could not parse target address %q\n", targetStr)
