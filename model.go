@@ -83,6 +83,17 @@ type Graph struct {
 	// attributes, and the to/from targets of import/moved/removed blocks.
 	// Use NodeExists to check whether a target address is valid.
 	Defined map[NodeID]bool
+
+	// Sources maps each defined node to the source range of its defining
+	// block or attribute within the original .tf / .tofu file.
+	//
+	// For locals, this is the individual attribute range (name = expr).
+	// For all other block types, this is the full block range from the
+	// opening keyword through the closing brace.
+	//
+	// Nodes that were not parsed from a defining block (e.g. transient
+	// opaque placeholders created during module stitching) have no entry.
+	Sources map[NodeID]hcl.Range
 }
 
 // NewGraph allocates an empty Graph.
@@ -91,6 +102,7 @@ func NewGraph() *Graph {
 		Forward:  make(map[NodeID][]Ref),
 		Backward: make(map[NodeID][]Ref),
 		Defined:  make(map[NodeID]bool),
+		Sources:  make(map[NodeID]hcl.Range),
 	}
 }
 

@@ -71,12 +71,12 @@ digraph tfref {
   node [fontname="Helvetica", fontsize=10];
   edge [fontname="Helvetica", fontsize=9, color="#555555"];
 
-  "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud"];
-  "data.google_iam_policy.production_iam_policy";
-  "google_folder_iam_policy.production";
-  "import[cloud_migration.tf:6]";
-  "local.cloud";
-  "module.prod-app-project";
+  "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud", tooltip="main.tf:5-8"];
+  "data.google_iam_policy.production_iam_policy" [tooltip="folder_production.tf:1-9"];
+  "google_folder_iam_policy.production" [tooltip="folder_production.tf:35-41"];
+  "import[cloud_migration.tf:6]" [tooltip="cloud_migration.tf:6-9"];
+  "local.cloud" [tooltip="outputs.tf:17"];
+  "module.prod-app-project" [tooltip="production_ui_app_project.tf:39-55"];
 
   "data.google_iam_policy.production_iam_policy" -> "module.cloud.output.vpc_terraform_service_account_email_by_id" [label="folder_production.tf:10"];
   "google_folder_iam_policy.production"    -> "data.google_iam_policy.production_iam_policy" [label="folder_production.tf:39"];
@@ -89,6 +89,7 @@ digraph tfref {
 **Reading the DOT graph:**
 - Arrows point **from dependent → dependency** (bottom-to-top in rendered layout)
 - The target node is highlighted in blue
+- Node `tooltip` attributes show the source file and line range where the node is defined (visible on hover in SVG output)
 - Edge labels show `file:line` of the reference expression
 - `import[file.tf:N]`, `moved[file.tf:N]`, `removed[file.tf:N]` nodes are administrative blocks at source line N — they **must** be updated or removed when restructuring the target
 - Edge targets show the exact node inside the module being referenced (e.g. `module.cloud.output.vpc_sa_email`), not just `module.cloud`

@@ -139,6 +139,7 @@ func parseModule(
 				for attrName, attr := range block.Body.Attributes {
 					owner := NodeID{modulePath, "local." + attrName}
 					graph.Defined[owner] = true
+					graph.Sources[owner] = attr.SrcRange
 					walkExprRefs(attr.Expr, owner, modulePath, graph)
 				}
 
@@ -154,6 +155,7 @@ func parseModule(
 					inputBindings:   make(map[string][]Ref),
 				}
 				graph.Defined[NodeID{modulePath, "module." + label}] = true
+				graph.Sources[NodeID{modulePath, "module." + label}] = block.Range()
 
 				var source string
 				var sourceSet bool
@@ -232,6 +234,8 @@ func parseModule(
 				line := block.OpenBraceRange.Start.Line
 				addr := fmt.Sprintf("%s[%s:%d]", block.Type, filename, line)
 				owner := NodeID{modulePath, addr}
+				graph.Defined[owner] = true
+				graph.Sources[owner] = block.Range()
 				// to= and from= are resource address literals; resolve them with
 				// addressLiteralToNodeID so that module.cloud.google_project.this
 				// becomes NodeID{"module.cloud", "google_project.this"} rather than
@@ -263,6 +267,7 @@ func parseModule(
 				}
 				owner := NodeID{modulePath, addr}
 				graph.Defined[owner] = true
+				graph.Sources[owner] = block.Range()
 				walkBodyRefs(block.Body, owner, modulePath, graph)
 			}
 		}

@@ -98,7 +98,7 @@ func main() {
 		results = tfref.DeepBackwardRefs(graph, target)
 	}
 
-	tfref.FormatDOT(os.Stdout, absWorkspace, targetStr, *direction, results)
+	tfref.FormatDOT(os.Stdout, graph, absWorkspace, targetStr, *direction, results)
 }
 
 // ── Arg reordering ────────────────────────────────────────────────────────────

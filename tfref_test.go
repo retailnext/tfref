@@ -795,9 +795,9 @@ func assertValidDOT(t *testing.T, dot string) {
 }
 
 // captureFormatDOT calls FormatDOT and returns the output as a string.
-func captureFormatDOT(workspace, targetStr, direction string, results []tfref.BackwardResult) string {
+func captureFormatDOT(graph *tfref.Graph, workspace, targetStr, direction string, results []tfref.BackwardResult) string {
 	var buf bytes.Buffer
-	tfref.FormatDOT(&buf, workspace, targetStr, direction, results)
+	tfref.FormatDOT(&buf, graph, workspace, targetStr, direction, results)
 	return buf.String()
 }
 
@@ -820,7 +820,7 @@ resource "terraform_data" "ip" {
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "terraform_data.web", "backward", results)
+	dot := captureFormatDOT(graph, dir, "terraform_data.web", "backward", results)
 	assertValidDOT(t, dot)
 }
 
@@ -842,13 +842,13 @@ resource "terraform_data" "ip" {
 	if len(results) == 0 {
 		t.Fatal("expected at least one result")
 	}
-	dot := captureFormatDOT(dir, "terraform_data.ip", "forward", results)
+	dot := captureFormatDOT(graph, dir, "terraform_data.ip", "forward", results)
 	assertValidDOT(t, dot)
 }
 
 // TestFormatDOTEmpty checks that an empty result set still produces valid DOT.
 func TestFormatDOTEmpty(t *testing.T) {
-	dot := captureFormatDOT("", "module.nonexistent", "backward", nil)
+	dot := captureFormatDOT(nil, "", "module.nonexistent", "backward", nil)
 	assertValidDOT(t, dot)
 }
 
@@ -861,7 +861,7 @@ func TestFormatDOTCrossModule(t *testing.T) {
 	}
 	target := tfref.ParseFullAddr("module.child_a")
 	results := tfref.DeepBackwardRefs(graph, target)
-	dot := captureFormatDOT("testdata/workspace-tf", tfref.FullAddr(target), "backward", results)
+	dot := captureFormatDOT(graph, "testdata/workspace-tf", tfref.FullAddr(target), "backward", results)
 	assertValidDOT(t, dot)
 }
 
@@ -892,11 +892,72 @@ resource "terraform_data" "legacy" {}
 	}
 	target := tfref.NodeID{Addr: "module.cloud"}
 	results := tfref.DeepBackwardRefs(graph, target)
-	dot := captureFormatDOT(dir, "module.cloud", "backward", results)
+	dot := captureFormatDOT(graph, dir, "module.cloud", "backward", results)
 	assertValidDOT(t, dot)
+	// import and moved nodes must also carry tooltip citations.
+	if !strings.Contains(dot, `tooltip="main.tf:3-6"`) {
+		t.Errorf("expected import block tooltip in DOT output; got:\n%s", dot)
+	}
+	if !strings.Contains(dot, `tooltip="main.tf:7-10"`) {
+		t.Errorf("expected moved block tooltip in DOT output; got:\n%s", dot)
+	}
 }
 
-// TestNodeExists verifies the target existence check for various scenarios.
+// TestFormatDOTCitations verifies that node declarations include tooltip
+// attributes citing the source file and line range for each block type.
+func TestFormatDOTCitations(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "main.tf"), `variable "region" {
+  type = string
+}
+locals {
+  tag = var.region
+}
+resource "terraform_data" "res" {
+  input = local.tag
+}
+data "terraform_data" "dat" {
+  depends_on = [terraform_data.res]
+}
+output "out" {
+  value = terraform_data.res.output
+}
+module "child" {
+  source = "./child"
+}
+`)
+	writeFile(t, filepath.Join(dir, "child", "main.tf"), `
+output "x" { value = "hello" }
+`)
+	graph, err := tfref.ParseWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		target  string
+		wantTip string // substring expected in tooltip for that node
+	}{
+		{"var.region", `tooltip="main.tf:1-3"`},
+		{"local.tag", `tooltip="main.tf:5"`},
+		{"terraform_data.res", `tooltip="main.tf:7-9"`},
+		{"data.terraform_data.dat", `tooltip="main.tf:10-12"`},
+		{"output.out", `tooltip="main.tf:13-15"`},
+		{"module.child", `tooltip="main.tf:16-18"`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.target, func(t *testing.T) {
+			target := tfref.ParseFullAddr(tc.target)
+			results := tfref.DeepForwardRefs(graph, target)
+			dot := captureFormatDOT(graph, dir, tc.target, "forward", results)
+			if !strings.Contains(dot, tc.wantTip) {
+				t.Errorf("DOT output for %s missing %q\ngot:\n%s", tc.target, tc.wantTip, dot)
+			}
+		})
+	}
+}
+
 func TestNodeExists(t *testing.T) {
 	dir := t.TempDir()
 	childDir := filepath.Join(dir, "modules", "cloud")
