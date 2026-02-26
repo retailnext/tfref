@@ -1006,3 +1006,41 @@ resource "terraform_data" "archived" {}
 		}
 	}
 }
+
+// TestNormalizeInstanceKeys verifies that instance-key bracket expressions are
+// stripped from full Terraform address strings.
+func TestNormalizeInstanceKeys(t *testing.T) {
+	cases := []struct {
+		input   string
+		want    string
+		changed bool
+	}{
+		// count index
+		{"aws_instance.web[0]", "aws_instance.web", true},
+		{"aws_instance.web[1]", "aws_instance.web", true},
+		// string for_each key
+		{`aws_instance.web["prod"]`, "aws_instance.web", true},
+		{`aws_instance.web["us-east-1"]`, "aws_instance.web", true},
+		// expression key (e.g. each.key)
+		{"aws_instance.web[each.key]", "aws_instance.web", true},
+		// module with instance key, output access
+		{`module.foo["prod"].output_x`, "module.foo.output_x", true},
+		{"module.foo[0].output_x", "module.foo.output_x", true},
+		// module with instance key, resource access (full path)
+		{"module.foo[0].aws_s3_bucket.b", "module.foo.aws_s3_bucket.b", true},
+		// already clean — no-op
+		{"aws_instance.web", "aws_instance.web", false},
+		{"module.foo.output_x", "module.foo.output_x", false},
+		{"module.foo.aws_s3_bucket.b", "module.foo.aws_s3_bucket.b", false},
+		// malformed nested brackets — not valid Terraform address syntax;
+		// returned unchanged so the caller gets a clear "does not exist" error.
+		{`module.foo[each.value["key"]].output`, `module.foo[each.value["key"]].output`, false},
+	}
+	for _, tc := range cases {
+		got, changed := tfref.NormalizeInstanceKeys(tc.input)
+		if got != tc.want || changed != tc.changed {
+			t.Errorf("NormalizeInstanceKeys(%q) = (%q, %v), want (%q, %v)",
+				tc.input, got, changed, tc.want, tc.changed)
+		}
+	}
+}

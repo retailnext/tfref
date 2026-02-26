@@ -6,8 +6,41 @@ package tfref
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// instanceKeyPattern matches a Terraform instance-key bracket expression,
+// e.g. [0], ["prod"], [each.key], [var.env].
+var instanceKeyPattern = regexp.MustCompile(`\[[^\]]*\]`)
+
+// NormalizeInstanceKeys strips any instance-key bracket expressions from a
+// Terraform full address string and reports whether any were removed.
+//
+// Terraform addresses may include instance keys to refer to a specific
+// instance of a resource or module that uses count or for_each.  The tfref
+// graph stores only the collapsed (non-instance) form, so keys must be
+// stripped before querying.
+//
+// If the input contains malformed bracket nesting (not a valid Terraform
+// address), the original string is returned unchanged with changed=false.
+//
+// Examples:
+//
+//	"aws_instance.web[0]"             → "aws_instance.web",       true
+//	"aws_instance.web[\"prod\"]"      → "aws_instance.web",       true
+//	"module.foo[\"prod\"].output_x"   → "module.foo.output_x",    true
+//	"module.foo[0].aws_s3_bucket.b"   → "module.foo.aws_s3_bucket.b", true
+//	"module.foo.output_x"             → "module.foo.output_x",    false
+func NormalizeInstanceKeys(s string) (string, bool) {
+	normalized := instanceKeyPattern.ReplaceAllString(s, "")
+	// If unmatched brackets remain (e.g. nested brackets in malformed input),
+	// treat the input as non-normalizable and return it unchanged.
+	if strings.ContainsRune(normalized, '[') || strings.ContainsRune(normalized, ']') {
+		return s, false
+	}
+	return normalized, normalized != s
+}
 
 // NodeExists reports whether target has an explicit defining block in the
 // workspace.  A node is considered to exist if any of the following are true:
