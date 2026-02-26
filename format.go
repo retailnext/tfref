@@ -17,13 +17,14 @@ import (
 //
 // direction is "backward" or "forward".  workspace is used to make file paths
 // in edge labels relative; pass an empty string to keep absolute paths.
+// graph is used to look up source citations for node tooltip annotations.
 //
 // Render the output with:
 //
 //	dot -Tsvg out.dot > out.svg
 //
 // or paste into https://dreampuf.github.io/GraphvizOnline/
-func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []BackwardResult) {
+func FormatDOT(w io.Writer, graph *Graph, workspace, targetStr, direction string, results []BackwardResult) {
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
 
 	p("// tfref %s: %s\n", direction, targetStr)
@@ -40,8 +41,8 @@ func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []Ba
 	p("\n")
 
 	// Target node — filled box so it stands out.
-	p("  %-40s [shape=box, style=\"filled,bold\", fillcolor=\"#d0e8ff\", label=%s];\n",
-		dotQuote(targetStr), dotQuote(targetStr))
+	p("  %-40s [shape=box, style=\"filled,bold\", fillcolor=\"#d0e8ff\", label=%s%s];\n",
+		dotQuote(targetStr), dotQuote(targetStr), nodeTooltip(targetStr, graph, workspace))
 
 	type edge struct {
 		from, to, file string
@@ -74,7 +75,12 @@ func FormatDOT(w io.Writer, workspace, targetStr, direction string, results []Ba
 	sort.Strings(nodeList)
 	if len(nodeList) > 0 {
 		for _, n := range nodeList {
-			p("  %s;\n", dotQuote(n))
+			tooltip := nodeTooltip(n, graph, workspace)
+			if tooltip == "" {
+				p("  %s;\n", dotQuote(n))
+			} else {
+				p("  %s [%s];\n", dotQuote(n), tooltip[2:]) // strip leading ", "
+			}
 		}
 		p("\n")
 	}
@@ -122,4 +128,26 @@ func dotRelPath(base, abs string) string {
 		return abs
 	}
 	return rel
+}
+
+// nodeTooltip returns a DOT attribute fragment of the form
+// `, tooltip="relpath.tf:startLine-endLine"` when the node has a known source
+// location in graph.Sources, or an empty string if it does not.
+func nodeTooltip(nodeAddr string, graph *Graph, workspace string) string {
+	if graph == nil {
+		return ""
+	}
+	id := ParseFullAddr(nodeAddr)
+	rng, ok := graph.Sources[id]
+	if !ok {
+		return ""
+	}
+	file := dotRelPath(workspace, rng.Filename)
+	var loc string
+	if rng.Start.Line == rng.End.Line {
+		loc = fmt.Sprintf("%s:%d", file, rng.Start.Line)
+	} else {
+		loc = fmt.Sprintf("%s:%d-%d", file, rng.Start.Line, rng.End.Line)
+	}
+	return `, tooltip=` + dotQuote(loc)
 }

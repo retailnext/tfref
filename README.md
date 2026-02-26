@@ -93,9 +93,9 @@ cd /path/to/workspace && tfref module.cloud
 digraph tfref {
   rankdir=BT;  // bottom-to-top: dependents above, dependencies below
 
-  "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud"];
-  "data.google_iam_policy.production_iam_policy";
-  "google_folder_iam_policy.production";
+  "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud", tooltip="main.tf:5-8"];
+  "data.google_iam_policy.production_iam_policy" [tooltip="folder_production.tf:1-9"];
+  "google_folder_iam_policy.production" [tooltip="folder_production.tf:35-41"];
   "import[imports.tf:10]";
 
   "data.google_iam_policy.production_iam_policy" -> "module.cloud.output.vpc_terraform_service_account_email_by_id" [label="folder_production.tf:10"];
@@ -113,7 +113,7 @@ Render it:
 tfref . module.cloud | dot -Tsvg -o refs.svg && open refs.svg
 ```
 
-**Reading the graph**: arrows point from dependent → dependency (bottom-to-top). The target is highlighted in blue. `import[file:N]`, `moved[file:N]`, and `removed[file:N]` nodes represent administrative blocks at source line N — these must be updated or removed when restructuring the target.
+**Reading the graph**: arrows point from dependent → dependency (bottom-to-top). The target is highlighted in blue. Node `tooltip` attributes show the source file and line range where the node is defined (visible on hover in SVG). `import[file:N]`, `moved[file:N]`, and `removed[file:N]` nodes represent administrative blocks at source line N — these must be updated or removed when restructuring the target.
 
 ---
 
