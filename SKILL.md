@@ -74,7 +74,7 @@ digraph tfref {
   "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud", tooltip="main.tf:5-8"];
   "data.google_iam_policy.production_iam_policy" [tooltip="folder_production.tf:1-9"];
   "google_folder_iam_policy.production" [tooltip="folder_production.tf:35-41"];
-  "import[cloud_migration.tf:6]";
+  "import[cloud_migration.tf:6]" [tooltip="cloud_migration.tf:6-9"];
   "local.cloud" [tooltip="outputs.tf:17"];
   "module.prod-app-project" [tooltip="production_ui_app_project.tf:39-55"];
 

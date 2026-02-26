@@ -96,7 +96,7 @@ digraph tfref {
   "module.cloud"                           [shape=box, style="filled,bold", fillcolor="#d0e8ff", label="module.cloud", tooltip="main.tf:5-8"];
   "data.google_iam_policy.production_iam_policy" [tooltip="folder_production.tf:1-9"];
   "google_folder_iam_policy.production" [tooltip="folder_production.tf:35-41"];
-  "import[imports.tf:10]";
+  "import[imports.tf:10]" [tooltip="imports.tf:10-13"];
 
   "data.google_iam_policy.production_iam_policy" -> "module.cloud.output.vpc_terraform_service_account_email_by_id" [label="folder_production.tf:10"];
   "google_folder_iam_policy.production"    -> "data.google_iam_policy.production_iam_policy" [label="folder_production.tf:39"];

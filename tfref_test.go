@@ -894,6 +894,13 @@ resource "terraform_data" "legacy" {}
 	results := tfref.DeepBackwardRefs(graph, target)
 	dot := captureFormatDOT(graph, dir, "module.cloud", "backward", results)
 	assertValidDOT(t, dot)
+	// import and moved nodes must also carry tooltip citations.
+	if !strings.Contains(dot, `tooltip="main.tf:3-6"`) {
+		t.Errorf("expected import block tooltip in DOT output; got:\n%s", dot)
+	}
+	if !strings.Contains(dot, `tooltip="main.tf:7-10"`) {
+		t.Errorf("expected moved block tooltip in DOT output; got:\n%s", dot)
+	}
 }
 
 // TestFormatDOTCitations verifies that node declarations include tooltip
