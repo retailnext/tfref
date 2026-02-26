@@ -139,6 +139,7 @@ func parseModule(
 				for attrName, attr := range block.Body.Attributes {
 					owner := NodeID{modulePath, "local." + attrName}
 					graph.Defined[owner] = true
+					graph.Sources[owner] = attr.SrcRange
 					walkExprRefs(attr.Expr, owner, modulePath, graph)
 				}
 
@@ -154,6 +155,7 @@ func parseModule(
 					inputBindings:   make(map[string][]Ref),
 				}
 				graph.Defined[NodeID{modulePath, "module." + label}] = true
+				graph.Sources[NodeID{modulePath, "module." + label}] = block.Range()
 
 				var source string
 				var sourceSet bool
@@ -263,6 +265,7 @@ func parseModule(
 				}
 				owner := NodeID{modulePath, addr}
 				graph.Defined[owner] = true
+				graph.Sources[owner] = block.Range()
 				walkBodyRefs(block.Body, owner, modulePath, graph)
 			}
 		}
