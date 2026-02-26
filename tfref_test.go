@@ -957,6 +957,7 @@ output "x" { value = "hello" }
 		})
 	}
 }
+
 func TestNodeExists(t *testing.T) {
 	dir := t.TempDir()
 	childDir := filepath.Join(dir, "modules", "cloud")

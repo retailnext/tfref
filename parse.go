@@ -234,6 +234,7 @@ func parseModule(
 				line := block.OpenBraceRange.Start.Line
 				addr := fmt.Sprintf("%s[%s:%d]", block.Type, filename, line)
 				owner := NodeID{modulePath, addr}
+				graph.Defined[owner] = true
 				graph.Sources[owner] = block.Range()
 				// to= and from= are resource address literals; resolve them with
 				// addressLiteralToNodeID so that module.cloud.google_project.this
