@@ -48,7 +48,7 @@ jobs:
         id: lintdrift
         run: |
           pinned=$(grep 'GOLANGCI_LINT_VERSION:' .github/workflows/ci.yml | awk '{print $2}')
-          latest=$(curl -fsSL https://api.github.com/repos/golangci/golangci-lint/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          latest=$(curl -fsSL https://api.github.com/repos/golangci/golangci-lint/releases/latest | jq -r '.tag_name')
           echo "pinned=$pinned latest=$latest"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           if [ "$pinned" != "$latest" ]; then
