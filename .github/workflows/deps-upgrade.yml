@@ -58,6 +58,6 @@ jobs:
           fi
       - name: Run golangci-lint (new version or on dep/go changes)
         if: steps.lintdrift.outputs.drifted == 'true' || steps.upgrade.outputs.changed == 'true' || steps.godrift.outputs.drifted == 'true'
-        uses: golangci/golangci-lint-action@v9.2.0
+        uses: golangci/golangci-lint-action@v9.2.1
         with:
           version: ${{ steps.lintdrift.outputs.latest }}
